@@ -1,0 +1,13 @@
+{
+  "name": "yuchen-skills",
+  "version": "0.1.0",
+  "private": true,
+  "description": "X/Twitter 媒体平台研究的个人 Claude Code 技能",
+  "scripts": {
+    "test": "bun test skills/**/*.test.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.7"
+  }
+}

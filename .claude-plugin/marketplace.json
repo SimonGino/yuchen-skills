@@ -1,0 +1,23 @@
+{
+  "name": "yuchen-skills",
+  "owner": {
+    "name": "wqq",
+    "email": ""
+  },
+  "metadata": {
+    "description": "X/Twitter 媒体平台研究的个人技能",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "x-media-tools",
+      "description": "X/Twitter 内容导出与研究工具",
+      "source": "./",
+      "strict": false,
+      "skills": [
+        "./skills/x-bookmarks",
+        "./skills/x-to-md"
+      ]
+    }
+  ]
+}
