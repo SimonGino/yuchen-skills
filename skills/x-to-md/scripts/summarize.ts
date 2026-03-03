@@ -1,3 +1,4 @@
+import { resolveOpenAiApiFormat } from "../../shared/openai-format";
 import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "../../shared/wqq-skills-env";
 
 export type SummarizeOptions = {
@@ -19,7 +20,7 @@ const OPENAI_API_KEY_MISSING_ERROR =
 const SUMMARIZE_SYSTEM_PROMPT =
   "用中文为以下内容写一段摘要（1-3句话），简明扼要地概括核心要点。只输出摘要文字，不要加任何前缀、标签或解释。";
 
-const FILE_ONLY_ENV_KEYS = ["OPENAI_API_KEY", "OPENAI_BASE_URL"] as const;
+const FILE_ONLY_ENV_KEYS = ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_FORMAT"] as const;
 
 function splitFrontmatter(markdown: string): { frontmatter: string; body: string } {
   const match = markdown.match(/^---\n[\s\S]*?\n---\n?/);
@@ -152,6 +153,9 @@ async function requestChatCompletionsSummary(input: OpenAiRequestInput): Promise
 }
 
 async function requestOpenAiSummary(input: OpenAiRequestInput): Promise<string> {
+  const format = resolveOpenAiApiFormat(input.env);
+  if (format === "chat") return requestChatCompletionsSummary(input);
+  if (format === "responses") return requestResponsesSummary(input);
   try {
     return await requestResponsesSummary(input);
   } catch (error) {
