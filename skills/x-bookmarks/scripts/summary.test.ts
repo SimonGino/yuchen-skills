@@ -188,6 +188,110 @@ describe("generateAiSummaryForBookmark", () => {
       "https://api.openai.com/v1/chat/completions",
     ]);
   });
+
+  test("format=chat only calls /chat/completions", async () => {
+    const calls: string[] = [];
+    const fakeFetch = async (input: string | URL | Request) => {
+      calls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          choices: [{ message: { content: "一句话摘要：chat摘要\n相关性说明：chat相关" } }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+
+    const result = await generateAiSummaryForBookmark({
+      markdown: "# Title\n\nBody",
+      fallbackExcerpt: "Fallback excerpt",
+      url: "https://x.com/a/status/1",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      env: {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        OPENAI_API_FORMAT: "chat",
+      } as NodeJS.ProcessEnv,
+    });
+
+    expect(calls).toEqual(["https://api.openai.com/v1/chat/completions"]);
+    expect(result.oneLineSummary).toContain("chat摘要");
+    expect(result.usedFallback).toBe(false);
+  });
+
+  test("format=responses only calls /responses", async () => {
+    const calls: string[] = [];
+    const fakeFetch = async (input: string | URL | Request) => {
+      calls.push(String(input));
+      return new Response(
+        JSON.stringify({
+          output: [{ content: [{ type: "output_text", text: "一句话摘要：responses摘要\n相关性说明：responses相关" }] }],
+        }),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    };
+
+    const result = await generateAiSummaryForBookmark({
+      markdown: "# Title\n\nBody",
+      fallbackExcerpt: "Fallback excerpt",
+      url: "https://x.com/a/status/1",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      env: {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        OPENAI_API_FORMAT: "responses",
+      } as NodeJS.ProcessEnv,
+    });
+
+    expect(calls).toEqual(["https://api.openai.com/v1/responses"]);
+    expect(result.oneLineSummary).toContain("responses摘要");
+    expect(result.usedFallback).toBe(false);
+  });
+
+  test("format=responses returns fallback on failure (no fallback to chat)", async () => {
+    const calls: string[] = [];
+    const fakeFetch = async (input: string | URL | Request) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({ error: "fail" }), { status: 500 });
+    };
+
+    const result = await generateAiSummaryForBookmark({
+      markdown: "# Title\n\nBody",
+      fallbackExcerpt: "Fallback excerpt",
+      url: "https://x.com/a/status/1",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      env: {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        OPENAI_API_FORMAT: "responses",
+      } as NodeJS.ProcessEnv,
+    });
+
+    expect(calls).toEqual(["https://api.openai.com/v1/responses"]);
+    expect(result.usedFallback).toBe(true);
+  });
+
+  test("format=chat returns fallback on failure (no fallback to responses)", async () => {
+    const calls: string[] = [];
+    const fakeFetch = async (input: string | URL | Request) => {
+      calls.push(String(input));
+      return new Response(JSON.stringify({ error: "fail" }), { status: 500 });
+    };
+
+    const result = await generateAiSummaryForBookmark({
+      markdown: "# Title\n\nBody",
+      fallbackExcerpt: "Fallback excerpt",
+      url: "https://x.com/a/status/1",
+      fetchImpl: fakeFetch as unknown as typeof fetch,
+      env: {
+        OPENAI_API_KEY: "test-key",
+        OPENAI_BASE_URL: "https://api.openai.com/v1",
+        OPENAI_API_FORMAT: "chat",
+      } as NodeJS.ProcessEnv,
+    });
+
+    expect(calls).toEqual(["https://api.openai.com/v1/chat/completions"]);
+    expect(result.usedFallback).toBe(true);
+  });
 });
 
 describe("writeBookmarkSummary", () => {
