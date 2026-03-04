@@ -1,5 +1,6 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { resolveOpenAiApiFormat } from "../../shared/openai-format";
 import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "../../shared/wqq-skills-env";
 
 export type BookmarkSummarySource = {
@@ -36,7 +37,7 @@ const OPENAI_API_KEY_MISSING_ERROR = "Missing OPENAI_API_KEY. Set it in ~/.wqq-s
 const AI_SYSTEM_PROMPT =
   "You summarize X bookmarks for Chinese readers. Reply in exactly two lines with labels: 一句话摘要：... and 相关性说明：...";
 
-const FILE_ONLY_ENV_KEYS = ["OPENAI_API_KEY", "OPENAI_BASE_URL"] as const;
+const FILE_ONLY_ENV_KEYS = ["OPENAI_API_KEY", "OPENAI_BASE_URL", "OPENAI_API_FORMAT"] as const;
 
 function isMissingOpenAiApiKeyError(error: unknown): boolean {
   return error instanceof Error && error.message === OPENAI_API_KEY_MISSING_ERROR;
@@ -334,45 +335,51 @@ export async function generateAiSummaryForBookmark(input: {
   const baseUrl = (env.OPENAI_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = env.OPENAI_MODEL || "gpt-4o-mini";
 
-  try {
-    const content = await requestResponsesSummaryContent({
-      fetchImpl,
-      baseUrl,
-      apiKey,
-      model,
-      markdown: input.markdown,
-    });
-    const parsed = parseAiSummaryContent(content);
-    if (!parsed) {
-      throw new Error("OpenAI /responses summary format is invalid");
-    }
+  const format = resolveOpenAiApiFormat(env);
+  const requestInput = { fetchImpl, baseUrl, apiKey, model, markdown: input.markdown };
 
-    return {
-      ...parsed,
-      usedFallback: false,
-    };
+  if (format === "chat") {
+    try {
+      const content = await requestChatCompletionsSummaryContent(requestInput);
+      const parsed = parseAiSummaryContent(content);
+      if (!parsed) throw new Error("OpenAI /chat/completions summary format is invalid");
+      return { ...parsed, usedFallback: false };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      input.log?.(`[bookmarks-export] ai summary chat failed: ${input.url} (${message})`);
+      return fallback;
+    }
+  }
+
+  if (format === "responses") {
+    try {
+      const content = await requestResponsesSummaryContent(requestInput);
+      const parsed = parseAiSummaryContent(content);
+      if (!parsed) throw new Error("OpenAI /responses summary format is invalid");
+      return { ...parsed, usedFallback: false };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      input.log?.(`[bookmarks-export] ai summary responses failed: ${input.url} (${message})`);
+      return fallback;
+    }
+  }
+
+  // auto: try responses first, fallback to chat
+  try {
+    const content = await requestResponsesSummaryContent(requestInput);
+    const parsed = parseAiSummaryContent(content);
+    if (!parsed) throw new Error("OpenAI /responses summary format is invalid");
+    return { ...parsed, usedFallback: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     input.log?.(`[bookmarks-export] ai summary responses fallback to chat: ${input.url} (${message})`);
   }
 
   try {
-    const content = await requestChatCompletionsSummaryContent({
-      fetchImpl,
-      baseUrl,
-      apiKey,
-      model,
-      markdown: input.markdown,
-    });
+    const content = await requestChatCompletionsSummaryContent(requestInput);
     const parsed = parseAiSummaryContent(content);
-    if (!parsed) {
-      throw new Error("OpenAI /chat/completions summary format is invalid");
-    }
-
-    return {
-      ...parsed,
-      usedFallback: false,
-    };
+    if (!parsed) throw new Error("OpenAI /chat/completions summary format is invalid");
+    return { ...parsed, usedFallback: false };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     input.log?.(`[bookmarks-export] ai summary fallback: ${input.url} (${message})`);
