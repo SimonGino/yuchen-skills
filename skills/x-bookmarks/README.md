@@ -59,7 +59,17 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 EOF
 ```
 
-可选：`OPENAI_MODEL`（默认 `gpt-4o-mini`，可用环境变量覆盖）。
+可选环境变量：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `OPENAI_MODEL` | `gpt-4o-mini` | 用于生成摘要的模型 |
+| `OPENAI_API_FORMAT` | `auto` | API 格式：`responses`（OpenAI Responses API）、`chat`（Chat Completions API）、`auto`（先 responses 后 chat fallback） |
+
+**API 格式说明：**
+- `responses` — 仅调用 `/responses` 端点（OpenAI 官方 API 推荐）
+- `chat` — 仅调用 `/chat/completions` 端点（兼容 Groq、Deepseek、Ollama 等第三方 provider）
+- `auto` — 先尝试 `/responses`，失败后自动回退到 `/chat/completions`（默认行为）
 
 行为说明：
 - 缺少 `OPENAI_API_KEY`：直接报错
