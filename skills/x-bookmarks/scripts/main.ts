@@ -5,6 +5,7 @@ import { hasRequiredXCookies, loadXCookies } from "../../shared/x-runtime/cookie
 import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
 import { tweetToMarkdown } from "../../shared/x-runtime/tweet-to-markdown";
 import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
+import { createArgParser, takeOne, parsePositiveInt } from "../../shared/arg-parser";
 import { fetchBookmarksPage } from "./bookmarks-api";
 import { extractBookmarkPageDetails } from "./bookmarks-parser";
 import {
@@ -16,70 +17,36 @@ import {
 import { writeBookmarkSummary } from "./summary";
 import type { BookmarkTweet, ExportArgs, ExportSummary } from "./types";
 
-function parsePositiveInt(input: string, flagName: string): number {
-  const value = Number.parseInt(input, 10);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${flagName} must be a positive integer`);
-  }
-  return value;
-}
+const USAGE = `Usage:
+  npx -y bun skills/x-bookmarks/scripts/main.ts [--limit <n>] [--output <dir>] [--no-download-media] [--with-summary]`;
 
-function printUsage(): void {
-  console.log("Usage:");
-  console.log(
-    "  npx -y bun skills/wqq-x-bookmarks/scripts/main.ts [--limit <n>] [--output <dir>] [--no-download-media] [--with-summary]"
-  );
-}
-
-export function parseExportArgs(argv: string[]): ExportArgs {
-  const args: ExportArgs = {
+export const parseExportArgs = createArgParser<ExportArgs>(
+  {
     limit: 50,
     outputDir: path.resolve(getXOutputBaseDir(), "wqq-x-bookmarks-output"),
     downloadMedia: true,
     withSummary: false,
-  };
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-
-    if (arg === "--limit") {
-      const value = argv[++i];
-      if (!value) {
-        throw new Error("Missing value for --limit");
-      }
-      args.limit = parsePositiveInt(value, "--limit");
-      continue;
-    }
-
-    if (arg === "--output") {
-      const value = argv[++i];
-      if (!value) {
-        throw new Error("Missing value for --output");
-      }
-      args.outputDir = path.resolve(value);
-      continue;
-    }
-
-    if (arg === "--no-download-media") {
+  },
+  new Map([
+    ["--limit", (args, argv, i) => {
+      args.limit = parsePositiveInt(takeOne(argv, i, "--limit"), "--limit");
+      return { nextIndex: i + 1 };
+    }],
+    ["--output", (args, argv, i) => {
+      args.outputDir = path.resolve(takeOne(argv, i, "--output"));
+      return { nextIndex: i + 1 };
+    }],
+    ["--no-download-media", (args, _argv, i) => {
       args.downloadMedia = false;
-      continue;
-    }
-
-    if (arg === "--with-summary") {
+      return { nextIndex: i };
+    }],
+    ["--with-summary", (args, _argv, i) => {
       args.withSummary = true;
-      continue;
-    }
-
-    if (arg === "--help" || arg === "-h") {
-      printUsage();
-      process.exit(0);
-    }
-
-    throw new Error(`Unknown option: ${arg}`);
-  }
-
-  return args;
-}
+      return { nextIndex: i };
+    }],
+  ]),
+  { usage: USAGE },
+);
 
 function toCookieRecord(cookieMap: Record<string, string | undefined>): Record<string, string> {
   const output: Record<string, string> = {};
@@ -152,7 +119,7 @@ async function exportSingleTweet(
   log: (message: string) => void
 ): Promise<{ status: "success" | "skipped" | "failed"; markdownPath: string | null }> {
   const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
-  if (shouldSkipTweetOutput(existingPath ?? "", Boolean(existingPath))) {
+  if (shouldSkipTweetOutput(Boolean(existingPath))) {
     log(`[bookmarks-export] skipped: ${tweetId} (exists: ${existingPath})`);
     return {
       status: "skipped",

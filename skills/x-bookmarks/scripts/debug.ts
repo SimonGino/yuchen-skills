@@ -4,15 +4,8 @@ import { fileURLToPath } from "node:url";
 import { hasRequiredXCookies, loadXCookies } from "../../shared/x-runtime/cookies";
 import { fetchBookmarksPage, HttpStatusError } from "./bookmarks-api";
 import { extractBookmarkPage } from "./bookmarks-parser";
+import { createArgParser, takeOne, parsePositiveInt } from "../../shared/arg-parser";
 import type { DebugArgs } from "./types";
-
-function parsePositiveInt(input: string, flagName: string): number {
-  const value = Number.parseInt(input, 10);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${flagName} must be a positive integer`);
-  }
-  return value;
-}
 
 function buildRawFilePath(): string {
   const now = new Date();
@@ -23,43 +16,26 @@ function buildRawFilePath(): string {
   return path.resolve(process.cwd(), "wqq-x-bookmarks-output", `debug-bookmarks-raw-${stamp}.json`);
 }
 
-function printUsage(): void {
-  console.log("Usage:");
-  console.log("  npx -y bun skills/wqq-x-bookmarks/scripts/debug.ts [--count <n>] [--save-raw]");
-}
+const USAGE = `Usage:
+  npx -y bun skills/x-bookmarks/scripts/debug.ts [--count <n>] [--save-raw]`;
 
-export function parseDebugArgs(argv: string[]): DebugArgs {
-  const args: DebugArgs = {
+export const parseDebugArgs = createArgParser<DebugArgs>(
+  {
     count: 20,
     saveRaw: false,
-  };
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--count") {
-      const value = argv[++i];
-      if (!value) {
-        throw new Error("Missing value for --count");
-      }
-      args.count = parsePositiveInt(value, "--count");
-      continue;
-    }
-
-    if (arg === "--save-raw") {
+  },
+  new Map([
+    ["--count", (args, argv, i) => {
+      args.count = parsePositiveInt(takeOne(argv, i, "--count"), "--count");
+      return { nextIndex: i + 1 };
+    }],
+    ["--save-raw", (args, _argv, i) => {
       args.saveRaw = true;
-      continue;
-    }
-
-    if (arg === "--help" || arg === "-h") {
-      printUsage();
-      process.exit(0);
-    }
-
-    throw new Error(`Unknown option: ${arg}`);
-  }
-
-  return args;
-}
+      return { nextIndex: i };
+    }],
+  ]),
+  { usage: USAGE },
+);
 
 async function saveRawPayload(payload: unknown): Promise<string> {
   const rawPath = buildRawFilePath();

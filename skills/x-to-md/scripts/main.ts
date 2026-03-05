@@ -5,6 +5,7 @@ import { fxtweetToMarkdown } from "../../shared/x-runtime/fxtwitter";
 import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
 import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
 import { parseTweetId } from "../../shared/x-runtime/url-utils";
+import { createArgParser, takeOne, takeMany } from "../../shared/arg-parser";
 import {
   buildTweetOutputDirName,
   findExistingTweetMarkdownPath,
@@ -20,68 +21,39 @@ type RuntimeDeps = {
   summarizeImpl: typeof summarizeMarkdownToChinese;
 };
 
-function printUsage(): void {
-  console.log("Usage:");
-  console.log(
-    "  npx -y bun skills/wqq-x-to-md/scripts/main.ts --urls <url1> <url2> ... [--output <dir>] [--no-download-media]",
-  );
-}
+const USAGE = `Usage:
+  npx -y bun skills/x-to-md/scripts/main.ts --urls <url1> <url2> ... [--output <dir>] [--no-download-media]`;
 
-export function parseExportArgs(argv: string[]): ExportArgs {
-  const args: ExportArgs = {
+const parseExportArgsRaw = createArgParser<ExportArgs>(
+  {
     urls: [],
     outputDir: path.resolve(getXOutputBaseDir(), "wqq-x-to-md-output"),
     downloadMedia: true,
-  };
-
-  const takeMany = (i: number): { items: string[]; next: number } => {
-    const items: string[] = [];
-    let j = i + 1;
-    while (j < argv.length) {
-      const value = argv[j];
-      if (!value || value.startsWith("-")) break;
-      items.push(value);
-      j++;
-    }
-    return { items, next: j - 1 };
-  };
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (!arg) continue;
-
-    if (arg === "--urls") {
-      const { items, next } = takeMany(i);
+  },
+  new Map([
+    ["--urls", (args, argv, i) => {
+      const { items, nextIndex } = takeMany(argv, i);
       if (items.length === 0) throw new Error("Missing values for --urls");
       args.urls.push(...items);
-      i = next;
-      continue;
-    }
-
-    if (arg === "--output") {
-      const value = argv[++i];
-      if (!value) throw new Error("Missing value for --output");
-      args.outputDir = path.resolve(value);
-      continue;
-    }
-
-    if (arg === "--no-download-media") {
+      return { nextIndex };
+    }],
+    ["--output", (args, argv, i) => {
+      args.outputDir = path.resolve(takeOne(argv, i, "--output"));
+      return { nextIndex: i + 1 };
+    }],
+    ["--no-download-media", (args, _argv, i) => {
       args.downloadMedia = false;
-      continue;
-    }
+      return { nextIndex: i };
+    }],
+  ]),
+  { usage: USAGE },
+);
 
-    if (arg === "--help" || arg === "-h") {
-      printUsage();
-      process.exit(0);
-    }
-
-    throw new Error(`Unknown option: ${arg}`);
-  }
-
+export function parseExportArgs(argv: string[]): ExportArgs {
+  const args = parseExportArgsRaw(argv);
   if (args.urls.length === 0) {
     throw new Error("--urls is required");
   }
-
   return args;
 }
 
@@ -98,7 +70,7 @@ async function exportSingleUrl(
   }
 
   const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
-  if (shouldSkipTweetOutput(existingPath ?? "", Boolean(existingPath))) {
+  if (shouldSkipTweetOutput(Boolean(existingPath))) {
     log(`[x-to-md] skipped: ${tweetId} (exists: ${existingPath})`);
     return "skipped";
   }
