@@ -8,6 +8,7 @@ import {
   parseStringList,
 } from "../../shared/x-runtime/http";
 import type { BookmarkTweet } from "./types";
+import { unwrapTweetResult, expandTcoUrls, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
 
 type FetchTweetResultParams = {
   tweetId: string;
@@ -21,77 +22,10 @@ type TweetQueryInfo = {
   html: string;
 };
 
-function unwrapTweetResult(result: any): any {
-  if (!result) return null;
-  if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
-    return result.tweet;
-  }
-  return result?.tweet ?? result;
-}
-
 function isLikelyShortLinkOnlyText(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   return /^https?:\/\/t\.co\/\S+$/i.test(trimmed);
-}
-
-function expandTcoUrls(text: string, tweet: any): string {
-  const urls = tweet?.legacy?.entities?.urls;
-  if (!Array.isArray(urls) || !text) {
-    return text;
-  }
-
-  let expanded = text;
-  for (const item of urls) {
-    const shortUrl = item?.url;
-    const expandedUrl = item?.expanded_url ?? item?.unwound_url;
-    if (!shortUrl || !expandedUrl) {
-      continue;
-    }
-    expanded = expanded.split(String(shortUrl)).join(String(expandedUrl));
-  }
-  return expanded;
-}
-
-function pickTweetText(tweet: any): string {
-  const noteText = tweet?.note_tweet?.note_tweet_results?.result?.text;
-  const legacyText = tweet?.legacy?.full_text ?? tweet?.legacy?.text ?? "";
-  return expandTcoUrls(String(noteText ?? legacyText ?? "").trim(), tweet).trim();
-}
-
-function pickUsername(tweet: any): string | null {
-  const username = tweet?.core?.user_results?.result?.legacy?.screen_name;
-  return username ? String(username).trim() : null;
-}
-
-function pickMediaUrls(tweet: any): string[] {
-  const mediaItems = tweet?.legacy?.extended_entities?.media ?? tweet?.legacy?.entities?.media ?? [];
-  if (!Array.isArray(mediaItems)) {
-    return [];
-  }
-
-  const urls: string[] = [];
-  for (const media of mediaItems) {
-    if (!media) continue;
-    if (media.type === "photo") {
-      const imageUrl = media.media_url_https ?? media.media_url;
-      if (imageUrl) urls.push(String(imageUrl));
-      continue;
-    }
-
-    if (media.type === "video" || media.type === "animated_gif") {
-      const variants = media.video_info?.variants;
-      if (!Array.isArray(variants)) continue;
-      const best = variants
-        .filter((variant) => variant?.url && variant?.content_type === "video/mp4")
-        .sort((a, b) => (b?.bitrate ?? 0) - (a?.bitrate ?? 0))[0];
-      if (best?.url) {
-        urls.push(String(best.url));
-      }
-    }
-  }
-
-  return urls;
 }
 
 function resolveMainChunkHash(html: string): string | null {

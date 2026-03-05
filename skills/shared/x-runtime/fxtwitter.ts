@@ -1,5 +1,7 @@
 import { formatArticleMarkdown } from "./markdown";
 import type { ArticleEntity, ArticleEntityMapEntry } from "./types";
+import { parseTweetId } from "./url-utils";
+import { formatMetaMarkdown } from "./tweet-utils";
 
 const FXTWITTER_API = "https://api.fxtwitter.com";
 
@@ -95,35 +97,6 @@ function fxtweetArticleToEntity(article: FxtweetArticle): ArticleEntity {
       : undefined,
     media_entities: article.media_entities,
   };
-}
-
-function parseTweetId(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  if (/^\d+$/.test(trimmed)) return trimmed;
-  try {
-    const parsed = new URL(trimmed);
-    const match = parsed.pathname.match(/\/status(?:es)?\/(\d+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
-function formatMetaMarkdown(
-  meta: Record<string, string | number | null | undefined>,
-): string {
-  const lines = ["---"];
-  for (const [key, value] of Object.entries(meta)) {
-    if (value === undefined || value === null || value === "") continue;
-    if (typeof value === "number") {
-      lines.push(`${key}: ${value}`);
-    } else {
-      lines.push(`${key}: ${JSON.stringify(value)}`);
-    }
-  }
-  lines.push("---");
-  return lines.join("\n");
 }
 
 function formatRegularTweetMarkdown(tweet: FxtweetData): string {

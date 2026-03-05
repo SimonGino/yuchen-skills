@@ -1,3 +1,5 @@
+import { unwrapTweetResult } from "./tweet-utils";
+
 type ThreadLike = {
   requestedId?: string;
   rootId?: string;
@@ -131,14 +133,6 @@ function parseVideos(tweet: any): TweetVideo[] {
       return acc;
     }, [])
     .filter((video) => Boolean(video.url));
-}
-
-function unwrapTweetResult(result: any): any {
-  if (!result) return null;
-  if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
-    return result.tweet;
-  }
-  return result;
 }
 
 function resolveTweetId(tweet: any): string | undefined {

@@ -1,4 +1,5 @@
 import type { BookmarkTweet } from "./types";
+import { unwrapTweetResult, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
 
 type BookmarkPageDetails = {
   tweetIds: string[];
@@ -6,67 +7,9 @@ type BookmarkPageDetails = {
   tweetsById: Record<string, BookmarkTweet>;
 };
 
-function unwrapTweetResult(result: any): any {
-  if (!result) {
-    return null;
-  }
-  if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
-    return result.tweet;
-  }
-  return result?.tweet ?? result;
-}
-
 function pickTweetId(result: any): string | null {
   const tweet = unwrapTweetResult(result);
   return tweet?.legacy?.id_str ?? tweet?.rest_id ?? null;
-}
-
-function pickTweetText(tweet: any): string {
-  const noteText = tweet?.note_tweet?.note_tweet_results?.result?.text;
-  const legacyText = tweet?.legacy?.full_text ?? tweet?.legacy?.text ?? "";
-  return String(noteText ?? legacyText ?? "").trim();
-}
-
-function pickUsername(tweet: any): string | null {
-  const username = tweet?.core?.user_results?.result?.legacy?.screen_name;
-  return username ? String(username).trim() : null;
-}
-
-function pickMediaUrls(tweet: any): string[] {
-  const mediaItems = tweet?.legacy?.extended_entities?.media ?? tweet?.legacy?.entities?.media ?? [];
-  if (!Array.isArray(mediaItems)) {
-    return [];
-  }
-
-  const urls: string[] = [];
-  for (const media of mediaItems) {
-    if (!media) {
-      continue;
-    }
-    const mediaType = media.type;
-    if (mediaType === "photo") {
-      const imageUrl = media.media_url_https ?? media.media_url;
-      if (imageUrl) {
-        urls.push(String(imageUrl));
-      }
-      continue;
-    }
-
-    if (mediaType === "video" || mediaType === "animated_gif") {
-      const variants = media.video_info?.variants;
-      if (!Array.isArray(variants)) {
-        continue;
-      }
-      const best = variants
-        .filter((variant) => variant?.url && variant?.content_type === "video/mp4")
-        .sort((a, b) => (b?.bitrate ?? 0) - (a?.bitrate ?? 0))[0];
-      if (best?.url) {
-        urls.push(String(best.url));
-      }
-    }
-  }
-
-  return urls;
 }
 
 function collectFromItemContent(itemContent: any, ids: Set<string>, tweetsById: Record<string, BookmarkTweet>): void {

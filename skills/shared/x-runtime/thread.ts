@@ -1,4 +1,5 @@
 import { fetchTweetDetail } from "./graphql";
+import { unwrapTweetResult } from "./tweet-utils";
 
 type TweetEntry = {
   tweet: any;
@@ -20,14 +21,6 @@ type ThreadResult = {
   user?: any;
   responses?: unknown[];
 };
-
-function unwrapTweetResult(result: any): any {
-  if (!result) return null;
-  if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
-    return result.tweet;
-  }
-  return result;
-}
 
 function extractTweetEntry(itemContent: any): TweetEntry | null {
   const result = itemContent?.tweet_results?.result;

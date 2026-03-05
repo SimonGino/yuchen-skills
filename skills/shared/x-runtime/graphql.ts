@@ -22,17 +22,10 @@ import {
   parseStringList,
 } from "./http";
 import type { ArticleQueryInfo } from "./types";
+import { unwrapTweetResult } from "./tweet-utils";
 
 function isNonEmptyObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && Object.keys(value as Record<string, unknown>).length > 0);
-}
-
-function unwrapTweetResult(result: any): any {
-  if (!result) return null;
-  if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
-    return result.tweet;
-  }
-  return result;
 }
 
 function extractArticleFromTweet(payload: unknown): unknown {

@@ -7,6 +7,8 @@ import { fetchTweetThread } from "./thread";
 import { formatArticleMarkdown } from "./markdown";
 import { formatThreadTweetsMarkdown } from "./thread-markdown";
 import { resolveArticleEntityFromTweet } from "./tweet-article";
+import { parseTweetId } from "./url-utils";
+import { formatMetaMarkdown } from "./tweet-utils";
 
 type TweetToMarkdownOptions = {
   log?: (message: string) => void;
@@ -36,42 +38,12 @@ function normalizeInputUrl(input: string): string {
   }
 }
 
-function parseTweetId(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  if (/^\d+$/.test(trimmed)) return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    const match = parsed.pathname.match(/\/status(?:es)?\/(\d+)/);
-    if (match?.[1]) return match[1];
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
 function buildTweetUrl(username: string | undefined, tweetId: string | undefined): string | null {
   if (!tweetId) return null;
   if (username) {
     return `https://x.com/${username}/status/${tweetId}`;
   }
   return `https://x.com/i/web/status/${tweetId}`;
-}
-
-function formatMetaMarkdown(meta: Record<string, string | number | null | undefined>): string {
-  const lines = ["---"];
-  for (const [key, value] of Object.entries(meta)) {
-    if (value === undefined || value === null || value === "") continue;
-    if (typeof value === "number") {
-      lines.push(`${key}: ${value}`);
-    } else {
-      lines.push(`${key}: ${JSON.stringify(value)}`);
-    }
-  }
-  lines.push("---");
-  return lines.join("\n");
 }
 
 function extractTweetText(tweet: any): string {

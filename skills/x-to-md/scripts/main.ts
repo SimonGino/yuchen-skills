@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { fxtweetToMarkdown } from "../../shared/x-runtime/fxtwitter";
 import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
 import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
+import { parseTweetId } from "../../shared/x-runtime/url-utils";
 import {
   buildTweetOutputDirName,
   findExistingTweetMarkdownPath,
@@ -84,27 +85,13 @@ export function parseExportArgs(argv: string[]): ExportArgs {
   return args;
 }
 
-function parseTweetIdFromUrl(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  if (/^\d+$/.test(trimmed)) return trimmed;
-
-  try {
-    const parsed = new URL(trimmed);
-    const match = parsed.pathname.match(/\/status(?:es)?\/(\d+)/);
-    return match?.[1] ?? null;
-  } catch {
-    return null;
-  }
-}
-
 async function exportSingleUrl(
   url: string,
   args: ExportArgs,
   deps: RuntimeDeps,
   log: (message: string) => void,
 ): Promise<"success" | "skipped" | "failed"> {
-  const tweetId = parseTweetIdFromUrl(url);
+  const tweetId = parseTweetId(url);
   if (!tweetId) {
     log(`[x-to-md] failed: invalid tweet url (${url})`);
     return "failed";
