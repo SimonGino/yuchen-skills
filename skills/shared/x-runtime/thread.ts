@@ -1,5 +1,6 @@
 import { fetchTweetDetail } from "./graphql";
 import { unwrapTweetResult } from "./tweet-utils";
+import type { XCookieMap } from "./types";
 
 type TweetEntry = {
   tweet: any;
@@ -132,7 +133,7 @@ function toTimestamp(value: string | undefined): number {
 
 export async function fetchTweetThread(
   tweetId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   includeResponses = false
 ): Promise<ThreadResult | null> {
   const responses: unknown[] = [];
@@ -143,7 +144,7 @@ export async function fetchTweetThread(
 
   let { entries, moreCursor, topCursor, bottomCursor } = parseTweetsAndToken(res);
   if (!entries.length) {
-    const errorMessage = res?.errors?.[0]?.message;
+    const errorMessage = (res as any)?.errors?.[0]?.message;
     if (errorMessage) {
       throw new Error(errorMessage);
     }
@@ -287,7 +288,8 @@ export async function fetchTweetThread(
   }
 
   const tweets = threadEntries.map((entry) => entry.tweet);
-  const user = threadEntries[0].user ?? threadEntries[0].tweet?.core?.user_results?.result?.legacy;
+  const firstEntry = threadEntries[0]!;
+  const user = firstEntry.user ?? firstEntry.tweet?.core?.user_results?.result?.legacy;
   const result: ThreadResult = {
     requestedId: tweetId,
     rootId: rootEntry.id_str ?? tweetId,

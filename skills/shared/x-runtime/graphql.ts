@@ -21,7 +21,7 @@ import {
   fetchText,
   parseStringList,
 } from "./http";
-import type { ArticleQueryInfo } from "./types";
+import type { ArticleQueryInfo, XCookieMap } from "./types";
 import { unwrapTweetResult } from "./tweet-utils";
 
 function isNonEmptyObject(value: unknown): value is Record<string, unknown> {
@@ -32,11 +32,10 @@ function extractArticleFromTweet(payload: unknown): unknown {
   const root = (payload as { data?: any }).data ?? payload;
   const result = root?.tweetResult?.result ?? root?.tweet_result?.result ?? root?.tweet_result;
   const tweet = unwrapTweetResult(result);
-  const legacy = tweet?.legacy ?? {};
-  const article = legacy?.article ?? tweet?.article;
+  const article = tweet?.legacy?.article ?? tweet?.article;
   return (
-    article?.article_results?.result ??
-    legacy?.article_results?.result ??
+    (article as any)?.article_results?.result ??
+    tweet?.legacy?.article_results?.result ??
     tweet?.article_results?.result ??
     null
   );
@@ -243,7 +242,7 @@ async function resolveTweetQueryInfo(userAgent: string): Promise<ArticleQueryInf
 
 async function fetchTweetResult(
   tweetId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   userAgent: string,
   bearerToken: string
 ): Promise<unknown> {
@@ -286,7 +285,7 @@ async function fetchTweetResult(
 
 export async function fetchTweetDetail(
   tweetId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   cursor?: string
 ): Promise<unknown> {
   const userAgent = process.env.X_USER_AGENT?.trim() || DEFAULT_USER_AGENT;
@@ -345,7 +344,7 @@ export async function fetchTweetDetail(
 
 async function fetchArticleEntityById(
   articleEntityId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   userAgent: string,
   bearerToken: string
 ): Promise<unknown> {
@@ -380,7 +379,7 @@ async function fetchArticleEntityById(
 
 export async function fetchXArticle(
   articleId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   raw: boolean
 ): Promise<unknown> {
   const userAgent = process.env.X_USER_AGENT?.trim() || DEFAULT_USER_AGENT;
@@ -406,7 +405,7 @@ export async function fetchXArticle(
 
 export async function fetchXTweet(
   tweetId: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   raw: boolean
 ): Promise<unknown> {
   const userAgent = process.env.X_USER_AGENT?.trim() || DEFAULT_USER_AGENT;

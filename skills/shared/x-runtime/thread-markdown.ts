@@ -94,7 +94,7 @@ function parsePhotos(tweet: any): TweetPhoto[] {
       acc.push({ src, alt });
       return acc;
     }, [])
-    .filter((photo) => Boolean(photo.src));
+    .filter((photo: TweetPhoto) => Boolean(photo.src));
 }
 
 function parseVideos(tweet: any): TweetVideo[] {
@@ -132,7 +132,7 @@ function parseVideos(tweet: any): TweetVideo[] {
       });
       return acc;
     }, [])
-    .filter((video) => Boolean(video.url));
+    .filter((video: TweetVideo) => Boolean(video.url));
 }
 
 function resolveTweetId(tweet: any): string | undefined {

@@ -1,5 +1,5 @@
 import { fetchXArticle } from "./graphql";
-import type { ArticleEntity } from "./types";
+import type { ArticleEntity, XCookieMap } from "./types";
 
 function coerceArticleEntity(value: unknown): ArticleEntity | null {
   if (!value || typeof value !== "object") return null;
@@ -77,7 +77,7 @@ export function extractArticleIdFromTweet(tweet: any): string | null {
 
 export async function resolveArticleEntityFromTweet(
   tweet: any,
-  cookieMap: Record<string, string>
+  cookieMap: XCookieMap
 ): Promise<unknown | null> {
   if (!tweet) return null;
   const embedded = extractArticleEntityFromTweet(tweet);

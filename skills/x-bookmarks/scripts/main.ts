@@ -16,6 +16,7 @@ import {
 } from "../../shared/x-runtime/output";
 import { writeBookmarkSummary } from "./summary";
 import type { BookmarkTweet, ExportArgs, ExportSummary } from "./types";
+import type { XCookieMap } from "../../shared/x-runtime/types";
 
 const USAGE = `Usage:
   npx -y bun skills/x-bookmarks/scripts/main.ts [--limit <n>] [--output <dir>] [--no-download-media] [--with-summary]`;
@@ -48,18 +49,8 @@ export const parseExportArgs = createArgParser<ExportArgs>(
   { usage: USAGE },
 );
 
-function toCookieRecord(cookieMap: Record<string, string | undefined>): Record<string, string> {
-  const output: Record<string, string> = {};
-  for (const [key, value] of Object.entries(cookieMap)) {
-    if (typeof value === "string" && value.trim()) {
-      output[key] = value;
-    }
-  }
-  return output;
-}
-
 async function collectBookmarkTweets(
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   limit: number,
   log: (message: string) => void
 ): Promise<{ tweetIds: string[]; tweetsById: Record<string, BookmarkTweet> }> {
@@ -114,7 +105,7 @@ function resolveTweetSeedUrl(tweetId: string, tweet: BookmarkTweet | undefined):
 async function exportSingleTweet(
   tweetId: string,
   tweetUrl: string,
-  cookieMap: Record<string, string>,
+  cookieMap: XCookieMap,
   args: ExportArgs,
   log: (message: string) => void
 ): Promise<{ status: "success" | "skipped" | "failed"; markdownPath: string | null }> {
@@ -170,7 +161,7 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
   if (!hasRequiredXCookies(rawCookieMap)) {
     throw new Error("Missing auth cookies. Provide X_AUTH_TOKEN and X_CT0.");
   }
-  const cookieMap = toCookieRecord(rawCookieMap);
+  const cookieMap = rawCookieMap;
 
   log(`[bookmarks-export] collecting latest ${args.limit} bookmarks`);
   const collected = await collectBookmarkTweets(cookieMap, args.limit, log);

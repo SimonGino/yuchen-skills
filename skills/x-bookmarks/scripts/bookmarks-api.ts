@@ -8,9 +8,10 @@ import {
   parseStringList,
 } from "../../shared/x-runtime/http";
 import { retryWithBackoff } from "../../shared/retry";
+import type { XCookieMap } from "../../shared/x-runtime/types";
 
 type FetchBookmarksPageParams = {
-  cookieMap: Record<string, string>;
+  cookieMap: XCookieMap;
   count: number;
   cursor?: string;
   userAgent?: string;

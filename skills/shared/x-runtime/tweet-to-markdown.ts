@@ -9,10 +9,11 @@ import { formatThreadTweetsMarkdown } from "./thread-markdown";
 import { resolveArticleEntityFromTweet } from "./tweet-article";
 import { parseTweetId } from "./url-utils";
 import { formatMetaMarkdown } from "./tweet-utils";
+import type { XCookieMap } from "./types";
 
 type TweetToMarkdownOptions = {
   log?: (message: string) => void;
-  cookieMap?: Record<string, string>;
+  cookieMap?: XCookieMap;
 };
 
 function parseArgs(): { url?: string } {

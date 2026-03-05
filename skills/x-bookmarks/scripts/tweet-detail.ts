@@ -8,11 +8,12 @@ import {
   parseStringList,
 } from "../../shared/x-runtime/http";
 import type { BookmarkTweet } from "./types";
+import type { XCookieMap } from "../../shared/x-runtime/types";
 import { unwrapTweetResult, expandTcoUrls, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
 
 type FetchTweetResultParams = {
   tweetId: string;
-  cookieMap: Record<string, string>;
+  cookieMap: XCookieMap;
 };
 
 type TweetQueryInfo = {
