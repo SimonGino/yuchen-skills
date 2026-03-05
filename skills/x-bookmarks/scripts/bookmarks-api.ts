@@ -7,6 +7,7 @@ import {
   fetchText,
   parseStringList,
 } from "../../shared/x-runtime/http";
+import { retryWithBackoff } from "../../shared/retry";
 
 type FetchBookmarksPageParams = {
   cookieMap: Record<string, string>;
@@ -38,18 +39,6 @@ function parseBookmarksApiHash(html: string): string {
     html.match(/\"api\":\"([a-zA-Z0-9_-]+)\"/)?.[1] ??
     ""
   );
-}
-
-function isRetryableStatus(status: number): boolean {
-  return status === 429 || status >= 500;
-}
-
-function isRetryableError(error: unknown): boolean {
-  return error instanceof HttpStatusError && isRetryableStatus(error.status);
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export function resolveBookmarksApiChunkUrl(html: string): string {
@@ -89,19 +78,6 @@ export function extractBookmarksQueryInfo(apiChunk: string): BookmarksQueryInfo 
     featureSwitches,
     fieldToggles,
   };
-}
-
-export async function withRetry<T>(fn: () => Promise<T>, retries = 3): Promise<T> {
-  for (let attempt = 0; ; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      if (attempt >= retries || !isRetryableError(error)) {
-        throw error;
-      }
-      await sleep(1000 * 2 ** attempt);
-    }
-  }
 }
 
 async function fetchBookmarksPageOnce(params: FetchBookmarksPageParams): Promise<unknown> {
@@ -151,5 +127,8 @@ async function fetchBookmarksPageOnce(params: FetchBookmarksPageParams): Promise
 }
 
 export async function fetchBookmarksPage(params: FetchBookmarksPageParams): Promise<unknown> {
-  return withRetry(() => fetchBookmarksPageOnce(params));
+  return retryWithBackoff(() => fetchBookmarksPageOnce(params), {
+    maxAttempts: 4,
+    isRetryable: (err) => err instanceof HttpStatusError && (err.status === 429 || err.status >= 500),
+  });
 }
