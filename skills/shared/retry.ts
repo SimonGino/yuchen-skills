@@ -5,6 +5,7 @@ export type RetryOptions = {
   delayMs?: number;
   backoffFactor?: number;
   onRetry?: (error: Error, attempt: number) => void;
+  isRetryable?: (error: Error) => boolean;
 };
 
 export async function retryWithBackoff<T>(
@@ -16,6 +17,7 @@ export async function retryWithBackoff<T>(
     delayMs = 1000,
     backoffFactor = 2,
     onRetry,
+    isRetryable,
   } = options;
 
   let lastError: Error | null = null;
@@ -25,6 +27,10 @@ export async function retryWithBackoff<T>(
       return await fn();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
+
+      if (isRetryable && !isRetryable(lastError)) {
+        throw lastError;
+      }
 
       if (attempt === maxAttempts) {
         break;

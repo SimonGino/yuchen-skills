@@ -75,6 +75,48 @@ describe("retry utilities", () => {
     expect(retryAttempts).toEqual([1, 2]);
     expect(retryErrors[0]?.message).toBe("test error");
   });
+
+  it("should skip retry when isRetryable returns false", async () => {
+    let attempts = 0;
+
+    try {
+      await retryWithBackoff(
+        async () => {
+          attempts++;
+          throw new Error("non-retryable");
+        },
+        {
+          maxAttempts: 3,
+          delayMs: 10,
+          isRetryable: (err) => err.message !== "non-retryable",
+        },
+      );
+      expect(true).toBe(false);
+    } catch (error) {
+      expect((error as Error).message).toBe("non-retryable");
+      expect(attempts).toBe(1);
+    }
+  });
+
+  it("should retry when isRetryable returns true", async () => {
+    let attempts = 0;
+
+    const result = await retryWithBackoff(
+      async () => {
+        attempts++;
+        if (attempts < 3) throw new Error("retryable");
+        return "done";
+      },
+      {
+        maxAttempts: 3,
+        delayMs: 10,
+        isRetryable: (err) => err.message === "retryable",
+      },
+    );
+
+    expect(result).toBe("done");
+    expect(attempts).toBe(3);
+  });
 });
 
 describe("formatError", () => {
