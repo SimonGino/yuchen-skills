@@ -46,7 +46,7 @@ export function createArgParser<T>(
   options?: ArgParserOptions,
 ): (argv: string[]) => T {
   return (argv: string[]): T => {
-    const result = { ...initial };
+    const result = structuredClone(initial);
 
     for (let i = 0; i < argv.length; i++) {
       const arg = argv[i];
