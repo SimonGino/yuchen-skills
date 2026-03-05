@@ -1,4 +1,6 @@
-export function unwrapTweetResult(result: any): any {
+import type { TweetResult } from "./types";
+
+export function unwrapTweetResult(result: TweetResult | null | undefined): TweetResult | null {
   if (!result) return null;
   if (result.__typename === "TweetWithVisibilityResults" && result.tweet) {
     return result.tweet;
@@ -6,8 +8,8 @@ export function unwrapTweetResult(result: any): any {
   return result?.tweet ?? result;
 }
 
-export function expandTcoUrls(text: string, tweet: any): string {
-  const urls = tweet?.legacy?.entities?.urls;
+export function expandTcoUrls(text: string, tweet: TweetResult | null | undefined): string {
+  const urls = tweet?.legacy?.entities?.urls as Array<{ url?: string; expanded_url?: string; unwound_url?: string }> | undefined;
   if (!Array.isArray(urls) || !text) {
     return text;
   }
@@ -24,18 +26,18 @@ export function expandTcoUrls(text: string, tweet: any): string {
   return expanded;
 }
 
-export function pickTweetText(tweet: any): string {
+export function pickTweetText(tweet: TweetResult | null | undefined): string {
   const noteText = tweet?.note_tweet?.note_tweet_results?.result?.text;
   const legacyText = tweet?.legacy?.full_text ?? tweet?.legacy?.text ?? "";
   return expandTcoUrls(String(noteText ?? legacyText ?? "").trim(), tweet).trim();
 }
 
-export function pickUsername(tweet: any): string | null {
+export function pickUsername(tweet: TweetResult | null | undefined): string | null {
   const username = tweet?.core?.user_results?.result?.legacy?.screen_name;
   return username ? String(username).trim() : null;
 }
 
-export function pickMediaUrls(tweet: any): string[] {
+export function pickMediaUrls(tweet: TweetResult | null | undefined): string[] {
   const mediaItems = tweet?.legacy?.extended_entities?.media ?? tweet?.legacy?.entities?.media ?? [];
   if (!Array.isArray(mediaItems)) {
     return [];

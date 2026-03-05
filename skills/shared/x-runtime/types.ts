@@ -101,3 +101,62 @@ export type ArticleEntity = {
   };
   media_entities?: ArticleMediaEntity[];
 };
+
+export type VideoVariant = {
+  url?: string;
+  content_type?: string;
+  bitrate?: number;
+};
+
+export type UrlEntity = {
+  url?: string;
+  expanded_url?: string;
+  unwound_url?: string;
+  display_url?: string;
+};
+
+export type MediaEntity = {
+  type?: string;
+  media_url_https?: string;
+  media_url?: string;
+  video_info?: { variants?: VideoVariant[] };
+};
+
+export type TweetLegacy = {
+  id_str?: string;
+  full_text?: string;
+  text?: string;
+  extended_entities?: { media?: MediaEntity[] };
+  entities?: { media?: MediaEntity[]; urls?: UrlEntity[] };
+  article?: unknown;
+  article_results?: { result?: unknown };
+};
+
+export type UserLegacy = {
+  screen_name?: string;
+  name?: string;
+};
+
+export type TweetResult = {
+  __typename?: string;
+  tweet?: TweetResult;
+  rest_id?: string;
+  core?: { user_results?: { result?: { legacy?: UserLegacy } } };
+  legacy?: TweetLegacy;
+  note_tweet?: { note_tweet_results?: { result?: { text?: string } } };
+  article?: unknown;
+  article_results?: { result?: unknown };
+};
+
+export type TimelineInstruction = {
+  entries?: unknown[];
+  moduleItems?: unknown[];
+};
+
+export type BookmarkTimelineResponse = {
+  data?: {
+    bookmark_timeline_v2?: {
+      timeline?: { instructions?: TimelineInstruction[] };
+    };
+  };
+};

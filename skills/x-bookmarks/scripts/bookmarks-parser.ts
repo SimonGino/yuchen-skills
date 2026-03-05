@@ -1,4 +1,5 @@
 import type { BookmarkTweet } from "./types";
+import type { BookmarkTimelineResponse } from "../../shared/x-runtime/types";
 import { unwrapTweetResult, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
 
 type BookmarkPageDetails = {
@@ -70,7 +71,8 @@ function walkEntry(entry: any, ids: Set<string>, tweetsById: Record<string, Book
 }
 
 export function extractBookmarkPageDetails(payload: unknown): BookmarkPageDetails {
-  const instructions = (payload as any)?.data?.bookmark_timeline_v2?.timeline?.instructions;
+  const typed = payload as BookmarkTimelineResponse;
+  const instructions = typed?.data?.bookmark_timeline_v2?.timeline?.instructions;
   if (!Array.isArray(instructions)) {
     return { tweetIds: [], nextCursor: null, tweetsById: {} };
   }
