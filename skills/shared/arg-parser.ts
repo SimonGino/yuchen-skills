@@ -28,17 +28,34 @@ export function takeMany(argv: string[], index: number): { items: string[]; next
   return { items, nextIndex: j - 1 };
 }
 
+export function parsePositiveInt(input: string, flagName: string): number {
+  const value = Number.parseInt(input, 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${flagName} must be a positive integer`);
+  }
+  return value;
+}
+
+type ArgParserOptions = {
+  usage?: string;
+};
+
 export function createArgParser<T>(
   initial: T,
-  handlers: Map<string, ArgHandler<T>>
+  handlers: Map<string, ArgHandler<T>>,
+  options?: ArgParserOptions,
 ): (argv: string[]) => T {
   return (argv: string[]): T => {
     const result = { ...initial };
-    const positional: string[] = [];
 
     for (let i = 0; i < argv.length; i++) {
       const arg = argv[i];
       if (!arg) continue;
+
+      if ((arg === "--help" || arg === "-h") && options?.usage) {
+        console.log(options.usage);
+        process.exit(0);
+      }
 
       const handler = handlers.get(arg);
       if (handler) {
@@ -50,8 +67,6 @@ export function createArgParser<T>(
       if (arg.startsWith("-")) {
         throw new Error(`Unknown option: ${arg}`);
       }
-
-      positional.push(arg);
     }
 
     return result;
