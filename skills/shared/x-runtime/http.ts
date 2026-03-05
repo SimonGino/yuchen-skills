@@ -2,7 +2,9 @@ import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "./constants";
 import { buildCookieHeader } from "./cookies";
 import type { XCookieMap } from "./types";
 
-let cachedHomeHtml: { userAgent: string; html: string } | null = null;
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+let cachedHomeHtml: { userAgent: string; html: string; timestamp: number } | null = null;
 
 export async function fetchText(url: string, init?: RequestInit): Promise<string> {
   const response = await fetch(url, init);
@@ -14,7 +16,8 @@ export async function fetchText(url: string, init?: RequestInit): Promise<string
 }
 
 export async function fetchHomeHtml(userAgent: string = DEFAULT_USER_AGENT): Promise<string> {
-  if (cachedHomeHtml?.userAgent === userAgent) {
+  const now = Date.now();
+  if (cachedHomeHtml?.userAgent === userAgent && now - cachedHomeHtml.timestamp < CACHE_TTL_MS) {
     return cachedHomeHtml.html;
   }
   const html = await fetchText("https://x.com", {
@@ -22,7 +25,7 @@ export async function fetchHomeHtml(userAgent: string = DEFAULT_USER_AGENT): Pro
       "user-agent": userAgent,
     },
   });
-  cachedHomeHtml = { userAgent, html };
+  cachedHomeHtml = { userAgent, html, timestamp: now };
   return html;
 }
 

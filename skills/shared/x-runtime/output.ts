@@ -100,6 +100,6 @@ export function findExistingTweetMarkdownPath(baseDir: string, tweetId: string):
   return null;
 }
 
-export function shouldSkipTweetOutput(_markdownPath: string, exists: boolean): boolean {
+export function shouldSkipTweetOutput(exists: boolean): boolean {
   return exists;
 }

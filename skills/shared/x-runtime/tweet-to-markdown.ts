@@ -152,7 +152,7 @@ async function main() {
   const { url } = parseArgs();
   if (!url) {
     console.error("Usage:");
-    console.error("  npx -y bun skills/baoyu-danger-x-to-markdown/scripts/tweet-to-markdown.ts <tweet url>");
+    console.error("  npx -y bun skills/shared/x-runtime/tweet-to-markdown.ts <tweet url>");
     process.exit(1);
   }
 
