@@ -49,8 +49,13 @@ export async function retryWithBackoff<T>(
   throw lastError;
 }
 
-function sleep(ms: number): Promise<void> {
+export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function sleepWithJitter(baseMs: number, jitterMs: number): Promise<void> {
+  const delay = baseMs + Math.random() * jitterMs;
+  return sleep(delay);
 }
 
 export function formatError(error: unknown): string {
