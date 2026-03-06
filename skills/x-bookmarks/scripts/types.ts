@@ -1,5 +1,6 @@
 export type ExportArgs = {
   limit: number;
+  all: boolean;
   outputDir: string;
   downloadMedia: boolean;
   withSummary: boolean;

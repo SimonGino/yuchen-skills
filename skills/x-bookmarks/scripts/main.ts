@@ -6,8 +6,10 @@ import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
 import { tweetToMarkdown } from "../../shared/x-runtime/tweet-to-markdown";
 import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
 import { createArgParser, takeOne, parsePositiveInt } from "../../shared/arg-parser";
+import { sleepWithJitter } from "../../shared/retry";
 import { fetchBookmarksPage } from "./bookmarks-api";
 import { extractBookmarkPageDetails } from "./bookmarks-parser";
+import { loadExportState, saveExportState, isExported, addExportedId } from "./state";
 import {
   buildTweetOutputDirName,
   findExistingTweetMarkdownPath,
@@ -19,11 +21,12 @@ import type { BookmarkTweet, ExportArgs, ExportSummary } from "./types";
 import type { XCookieMap } from "../../shared/x-runtime/types";
 
 const USAGE = `Usage:
-  npx -y bun skills/x-bookmarks/scripts/main.ts [--limit <n>] [--output <dir>] [--no-download-media] [--with-summary]`;
+  npx -y bun skills/x-bookmarks/scripts/main.ts [--limit <n>] [--all] [--output <dir>] [--no-download-media] [--with-summary]`;
 
 export const parseExportArgs = createArgParser<ExportArgs>(
   {
     limit: 50,
+    all: false,
     outputDir: path.resolve(getXOutputBaseDir(), "wqq-x-bookmarks-output"),
     downloadMedia: true,
     withSummary: false,
@@ -32,6 +35,11 @@ export const parseExportArgs = createArgParser<ExportArgs>(
     ["--limit", (args, argv, i) => {
       args.limit = parsePositiveInt(takeOne(argv, i, "--limit"), "--limit");
       return { nextIndex: i + 1 };
+    }],
+    ["--all", (args, _argv, i) => {
+      args.all = true;
+      args.limit = Infinity;
+      return { nextIndex: i };
     }],
     ["--output", (args, argv, i) => {
       args.outputDir = path.resolve(takeOne(argv, i, "--output"));
@@ -52,18 +60,27 @@ export const parseExportArgs = createArgParser<ExportArgs>(
 async function collectBookmarkTweets(
   cookieMap: XCookieMap,
   limit: number,
-  log: (message: string) => void
-): Promise<{ tweetIds: string[]; tweetsById: Record<string, BookmarkTweet> }> {
+  log: (message: string) => void,
+  startCursor?: string,
+): Promise<{ tweetIds: string[]; tweetsById: Record<string, BookmarkTweet>; lastCursor: string | null }> {
   const tweetIds: string[] = [];
   const tweetsById: Record<string, BookmarkTweet> = {};
   const seenIds = new Set<string>();
   const seenCursors = new Set<string>();
-  let cursor: string | undefined;
+  let cursor: string | undefined = startCursor;
+  let lastCursor: string | null = null;
+  let pageNum = 0;
 
   while (tweetIds.length < limit) {
-    const count = Math.min(50, limit - tweetIds.length);
+    if (pageNum > 0) {
+      log(`[bookmarks-export] throttle: waiting before next page...`);
+      await sleepWithJitter(2000, 2000);
+    }
+
+    const count = Math.min(20, limit - tweetIds.length);
     const payload = await fetchBookmarksPage({ cookieMap, count, cursor });
     const page = extractBookmarkPageDetails(payload);
+    pageNum++;
 
     for (const [tweetId, tweet] of Object.entries(page.tweetsById)) {
       if (!tweetsById[tweetId]) {
@@ -88,10 +105,11 @@ async function collectBookmarkTweets(
 
     seenCursors.add(page.nextCursor);
     cursor = page.nextCursor;
-    log(`[bookmarks-export] next cursor: ${cursor}`);
+    lastCursor = page.nextCursor;
+    log(`[bookmarks-export] page ${pageNum}: collected ${tweetIds.length} ids, next cursor: ${cursor}`);
   }
 
-  return { tweetIds, tweetsById };
+  return { tweetIds, tweetsById, lastCursor };
 }
 
 function resolveTweetSeedUrl(tweetId: string, tweet: BookmarkTweet | undefined): string {
@@ -163,20 +181,68 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
   }
   const cookieMap = rawCookieMap;
 
-  log(`[bookmarks-export] collecting latest ${args.limit} bookmarks`);
-  const collected = await collectBookmarkTweets(cookieMap, args.limit, log);
+  // Load state for dedup and resume
+  const state = await loadExportState(args.outputDir);
+  const startCursor = args.all ? (state.lastCursor ?? undefined) : undefined;
+
+  const limitLabel = args.all ? "all" : String(args.limit);
+  log(`[bookmarks-export] collecting ${limitLabel} bookmarks`);
+  const collected = await collectBookmarkTweets(cookieMap, args.limit, log, startCursor);
   log(`[bookmarks-export] collected ${collected.tweetIds.length} tweet ids`);
+
+  // Update cursor in state
+  if (collected.lastCursor) {
+    state.lastCursor = collected.lastCursor;
+  }
 
   const summary: ExportSummary = { success: 0, skipped: 0, failed: 0 };
   const summarySources: Array<{ tweetId: string; markdownPath: string }> = [];
 
-  for (const tweetId of collected.tweetIds) {
+  for (let idx = 0; idx < collected.tweetIds.length; idx++) {
+    const tweetId = collected.tweetIds[idx]!;
+
+    // Check state file first (fast path)
+    if (isExported(state, tweetId)) {
+      log(`[bookmarks-export] skipped (state): ${tweetId}`);
+      summary.skipped += 1;
+      continue;
+    }
+
+    // Check filesystem (backwards compat)
+    const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
+    if (existingPath) {
+      log(`[bookmarks-export] skipped (exists): ${tweetId}`);
+      addExportedId(state, tweetId);
+      await saveExportState(args.outputDir, state);
+      summary.skipped += 1;
+      summarySources.push({ tweetId, markdownPath: existingPath });
+      continue;
+    }
+
+    // Throttle between tweet exports (skip delay for first non-skipped tweet)
+    if (summary.success > 0) {
+      log(`[bookmarks-export] throttle: waiting before next tweet...`);
+      await sleepWithJitter(3000, 2000);
+    }
+
     const tweetUrl = resolveTweetSeedUrl(tweetId, collected.tweetsById[tweetId]);
     const result = await exportSingleTweet(tweetId, tweetUrl, cookieMap, args, log);
     summary[result.status] += 1;
+
+    if (result.status === "success") {
+      addExportedId(state, tweetId);
+      state.lastRunAt = new Date().toISOString();
+      await saveExportState(args.outputDir, state);
+    }
+
     if (result.markdownPath) {
       summarySources.push({ tweetId, markdownPath: result.markdownPath });
     }
+
+    // Log progress
+    const total = collected.tweetIds.length;
+    const done = summary.success + summary.skipped + summary.failed;
+    log(`[bookmarks-export] progress: ${done}/${total}`);
   }
 
   if (args.withSummary) {
@@ -187,6 +253,10 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
       log("[bookmarks-export] summary: skipped (no readable markdown files)");
     }
   }
+
+  // Final state save
+  state.lastRunAt = new Date().toISOString();
+  await saveExportState(args.outputDir, state);
 
   log(
     `[bookmarks-export] done. success=${summary.success}, skipped=${summary.skipped}, failed=${summary.failed}, output=${args.outputDir}`

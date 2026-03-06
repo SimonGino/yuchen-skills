@@ -5,6 +5,7 @@ describe("parseExportArgs", () => {
   test("uses defaults", () => {
     const args = parseExportArgs([]);
     expect(args.limit).toBe(50);
+    expect(args.all).toBe(false);
     expect(args.downloadMedia).toBe(true);
     expect(args.withSummary).toBe(false);
   });
@@ -18,5 +19,17 @@ describe("parseExportArgs", () => {
   test("parses with-summary", () => {
     const args = parseExportArgs(["--with-summary"]);
     expect(args.withSummary).toBe(true);
+  });
+
+  test("parses --all flag", () => {
+    const args = parseExportArgs(["--all"]);
+    expect(args.all).toBe(true);
+    expect(args.limit).toBe(Infinity);
+  });
+
+  test("--all overrides --limit", () => {
+    const args = parseExportArgs(["--limit", "10", "--all"]);
+    expect(args.all).toBe(true);
+    expect(args.limit).toBe(Infinity);
   });
 });
