@@ -1,14 +1,17 @@
-import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "../../shared/x-runtime/constants";
+import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "./constants";
 import {
   buildFeatureMap,
   buildFieldToggleMap,
   buildRequestHeaders,
   fetchHomeHtml,
   fetchText,
+  HttpStatusError,
   parseStringList,
-} from "../../shared/x-runtime/http";
-import { retryWithBackoff } from "../../shared/retry";
-import type { XCookieMap } from "../../shared/x-runtime/types";
+} from "./http";
+import { retryWithBackoff } from "./retry";
+import type { XCookieMap } from "./x-types";
+
+export { HttpStatusError };
 
 type FetchBookmarksPageParams = {
   cookieMap: XCookieMap;
@@ -23,16 +26,6 @@ type BookmarksQueryInfo = {
   featureSwitches: string[];
   fieldToggles: string[];
 };
-
-export class HttpStatusError extends Error {
-  status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "HttpStatusError";
-    this.status = status;
-  }
-}
 
 function parseBookmarksApiHash(html: string): string {
   return (

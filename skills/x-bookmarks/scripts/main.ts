@@ -1,12 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { hasRequiredXCookies, loadXCookies } from "../../shared/x-runtime/cookies";
-import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
-import { tweetToMarkdown } from "../../shared/x-runtime/tweet-to-markdown";
-import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
-import { createArgParser, takeOne, parsePositiveInt } from "../../shared/arg-parser";
-import { sleepWithJitter } from "../../shared/retry";
+import { hasRequiredXCookies, loadXCookies } from "./cookies";
+import { localizeMarkdownMedia } from "./media-localizer";
+import { tweetToMarkdown } from "./tweet-to-markdown";
+import { getXOutputBaseDir } from "./wqq-skills-env";
+import { createArgParser, takeOne, parsePositiveInt } from "./arg-parser";
+import { sleepWithJitter } from "./retry";
 import { fetchBookmarksPage } from "./bookmarks-api";
 import { extractBookmarkPageDetails } from "./bookmarks-parser";
 import { loadExportState, saveExportState, isExported, addExportedId } from "./state";
@@ -15,10 +15,10 @@ import {
   findExistingTweetMarkdownPath,
   resolveTweetOutputPath,
   shouldSkipTweetOutput,
-} from "../../shared/x-runtime/output";
+} from "./output";
 import { writeBookmarkSummary } from "./summary";
 import type { BookmarkTweet, ExportArgs, ExportSummary } from "./types";
-import type { XCookieMap } from "../../shared/x-runtime/types";
+import type { XCookieMap } from "./x-types";
 
 const USAGE = `Usage:
   npx -y bun skills/x-bookmarks/scripts/main.ts [--limit <n>] [--all] [--output <dir>] [--no-download-media] [--with-summary]`;
@@ -197,6 +197,7 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
 
   const summary: ExportSummary = { success: 0, skipped: 0, failed: 0 };
   const summarySources: Array<{ tweetId: string; markdownPath: string }> = [];
+  let consecutiveFailures = 0;
 
   for (let idx = 0; idx < collected.tweetIds.length; idx++) {
     const tweetId = collected.tweetIds[idx]!;
@@ -219,15 +220,29 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
       continue;
     }
 
-    // Throttle between tweet exports (skip delay for first non-skipped tweet)
-    if (summary.success > 0) {
-      log(`[bookmarks-export] throttle: waiting before next tweet...`);
-      await sleepWithJitter(3000, 2000);
+    // Adaptive throttle: back off longer after consecutive failures
+    if (summary.success > 0 || consecutiveFailures > 0) {
+      if (consecutiveFailures >= 5) {
+        log(`[bookmarks-export] throttle: ${consecutiveFailures} consecutive failures, long backoff (120s)...`);
+        await sleepWithJitter(120_000, 30_000);
+      } else if (consecutiveFailures >= 3) {
+        log(`[bookmarks-export] throttle: ${consecutiveFailures} consecutive failures, backing off (60s)...`);
+        await sleepWithJitter(60_000, 15_000);
+      } else {
+        log(`[bookmarks-export] throttle: waiting before next tweet...`);
+        await sleepWithJitter(3000, 2000);
+      }
     }
 
     const tweetUrl = resolveTweetSeedUrl(tweetId, collected.tweetsById[tweetId]);
     const result = await exportSingleTweet(tweetId, tweetUrl, cookieMap, args, log);
     summary[result.status] += 1;
+
+    if (result.status === "failed") {
+      consecutiveFailures++;
+    } else {
+      consecutiveFailures = 0;
+    }
 
     if (result.status === "success") {
       addExportedId(state, tweetId);

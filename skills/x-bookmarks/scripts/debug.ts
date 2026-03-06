@@ -1,10 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { hasRequiredXCookies, loadXCookies } from "../../shared/x-runtime/cookies";
+import { hasRequiredXCookies, loadXCookies } from "./cookies";
 import { fetchBookmarksPage, HttpStatusError } from "./bookmarks-api";
 import { extractBookmarkPage } from "./bookmarks-parser";
-import { createArgParser, takeOne, parsePositiveInt } from "../../shared/arg-parser";
+import { createArgParser, takeOne, parsePositiveInt } from "./arg-parser";
 import type { DebugArgs } from "./types";
 
 function buildRawFilePath(): string {

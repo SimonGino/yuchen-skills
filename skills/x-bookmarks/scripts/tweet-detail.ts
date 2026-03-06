@@ -1,4 +1,4 @@
-import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "../../shared/x-runtime/constants";
+import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "./constants";
 import {
   buildFeatureMap,
   buildFieldToggleMap,
@@ -6,10 +6,10 @@ import {
   fetchHomeHtml,
   fetchText,
   parseStringList,
-} from "../../shared/x-runtime/http";
+} from "./http";
 import type { BookmarkTweet } from "./types";
-import type { XCookieMap } from "../../shared/x-runtime/types";
-import { unwrapTweetResult, expandTcoUrls, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
+import type { XCookieMap } from "./x-types";
+import { unwrapTweetResult, expandTcoUrls, pickTweetText, pickUsername, pickMediaUrls } from "./tweet-utils";
 
 type FetchTweetResultParams = {
   tweetId: string;

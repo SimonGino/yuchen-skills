@@ -1,6 +1,6 @@
 import type { BookmarkTweet } from "./types";
-import type { BookmarkTimelineResponse } from "../../shared/x-runtime/types";
-import { unwrapTweetResult, pickTweetText, pickUsername, pickMediaUrls } from "../../shared/x-runtime/tweet-utils";
+import type { BookmarkTimelineResponse } from "./x-types";
+import { unwrapTweetResult, pickTweetText, pickUsername, pickMediaUrls } from "./tweet-utils";
 
 type BookmarkPageDetails = {
   tweetIds: string[];

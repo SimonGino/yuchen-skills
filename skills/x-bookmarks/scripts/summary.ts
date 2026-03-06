@@ -1,7 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveOpenAiApiFormat } from "../../shared/openai-format";
-import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "../../shared/wqq-skills-env";
+import { resolveOpenAiApiFormat } from "./openai-format";
+import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "./wqq-skills-env";
 
 export type BookmarkSummarySource = {
   tweetId: string;
