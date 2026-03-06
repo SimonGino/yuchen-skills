@@ -4,10 +4,12 @@ import type { XCookieMap } from "./x-types";
 
 export class HttpStatusError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  retryAfterMs: number | null;
+  constructor(status: number, message: string, retryAfterMs?: number | null) {
     super(message);
     this.name = "HttpStatusError";
     this.status = status;
+    this.retryAfterMs = retryAfterMs ?? null;
   }
 }
 

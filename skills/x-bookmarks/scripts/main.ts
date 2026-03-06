@@ -206,6 +206,12 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
     if (isExported(state, tweetId)) {
       log(`[bookmarks-export] skipped (state): ${tweetId}`);
       summary.skipped += 1;
+      if (args.withSummary) {
+        const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
+        if (existingPath) {
+          summarySources.push({ tweetId, markdownPath: existingPath });
+        }
+      }
       continue;
     }
 

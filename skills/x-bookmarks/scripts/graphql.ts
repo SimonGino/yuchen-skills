@@ -59,13 +59,21 @@ function extractArticleFromEntity(payload: unknown): unknown {
   );
 }
 
+function parseRateLimitResetMs(response: Response): number | null {
+  const resetEpoch = response.headers.get("x-rate-limit-reset");
+  if (!resetEpoch) return null;
+  const resetMs = Number(resetEpoch) * 1000 - Date.now();
+  return resetMs > 0 ? resetMs + 2000 : null; // +2s safety margin
+}
+
 async function fetchXApiJson(url: string, headers: Record<string, string>): Promise<unknown> {
   return retryWithBackoff(
     async () => {
       const response = await fetch(url, { headers });
       const text = await response.text();
       if (!response.ok) {
-        throw new HttpStatusError(response.status, `X API error (${response.status}): ${text.slice(0, 400)}`);
+        const retryAfterMs = response.status === 429 ? parseRateLimitResetMs(response) : null;
+        throw new HttpStatusError(response.status, `X API error (${response.status}): ${text.slice(0, 400)}`, retryAfterMs);
       }
       try {
         return JSON.parse(text);
@@ -74,12 +82,20 @@ async function fetchXApiJson(url: string, headers: Record<string, string>): Prom
       }
     },
     {
-      maxAttempts: 4,
-      delayMs: 15_000,
-      backoffFactor: 3,
+      maxAttempts: 5,
+      delayMs: 60_000,
+      backoffFactor: 2,
       isRetryable: (err) => err instanceof HttpStatusError && (err.status === 429 || err.status >= 500),
       onRetry: (err, attempt) => {
-        console.log(`[x-api] retry ${attempt}: ${err.message}`);
+        const retryMs = err instanceof HttpStatusError && err.retryAfterMs;
+        const waitInfo = retryMs ? ` (rate limit resets in ${Math.ceil(retryMs / 1000)}s)` : "";
+        console.log(`[x-api] retry ${attempt}: ${err.message}${waitInfo}`);
+      },
+      getDelay: (err, _attempt, defaultDelay) => {
+        if (err instanceof HttpStatusError && err.retryAfterMs && err.retryAfterMs > 0) {
+          return Math.min(err.retryAfterMs, 15 * 60 * 1000); // cap at 15min
+        }
+        return defaultDelay;
       },
     }
   );

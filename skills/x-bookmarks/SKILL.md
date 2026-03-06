@@ -14,10 +14,20 @@ description: 导出 X 书签到 Markdown，支持 debug 认证验证、分页抓
   - `X_CT0`
 - 如果没有传，脚本会尝试读取本机 Chrome cookie（依赖 `python3` + `browser_cookie3`）。
 
-## Step 1: 先做 debug 认证验证
+## Step 1: 确认导出参数
+
+在执行任何命令前，先用 AskUserQuestion 向用户确认以下选项：
+
+1. **导出范围**：全部书签（--all）还是指定数量？
+2. **是否生成汇总 SUMMARY.md**（--with-summary）？
+3. **是否下载媒体文件**（默认下载，--no-download-media 跳过）？
+
+根据用户回答拼接命令参数。如果用户的原始指令已经明确了所有选项（如"导出全部书签带总结"），可以跳过对应问题。
+
+## Step 2: debug 认证验证（仅首次或异常时）
 
 ```bash
-npx -y bun skills/wqq-x-bookmarks/scripts/debug.ts --count 5 --save-raw
+npx -y bun skills/x-bookmarks/scripts/debug.ts --count 5 --save-raw
 ```
 
 说明：
@@ -25,34 +35,33 @@ npx -y bun skills/wqq-x-bookmarks/scripts/debug.ts --count 5 --save-raw
 - `--save-raw` 会保存原始 JSON，便于排查结构变化
 - 如果返回 401/403，说明 cookie 失效，需要刷新认证信息
 
-> 日常导出可以直接跳到 Step 2。`debug.ts` 主要用于首次接入和异常排查。
+> 日常导出可以直接跳到 Step 3。`debug.ts` 主要用于首次接入和异常排查。
 
-## Step 2: 执行导出链路
+## Step 3: 执行导出链路
 
-默认行为：
-- 默认 `--limit 50`
-- 默认下载媒体（不传 `--no-download-media`）
-- 单条失败不中断整体
-- 已存在 `<tweetId>.md` 自动 skip
-- 可选 `--with-summary` 同步生成汇总文档（AI 三段式）
+根据 Step 1 确认的参数执行：
 
 ```bash
-npx -y bun skills/x-bookmarks/scripts/main.ts
+npx -y bun skills/x-bookmarks/scripts/main.ts [参数]
 ```
 
-常用参数：
+常用参数组合：
 
 ```bash
-npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10
-npx -y bun skills/x-bookmarks/scripts/main.ts --output /tmp/wqq-x-bookmarks-demo
-npx -y bun skills/x-bookmarks/scripts/main.ts --no-download-media
-npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10 --with-summary
+# 默认 50 条
+npx -y bun skills/x-bookmarks/scripts/main.ts
 
-# 拉取全部书签（带节流，自动去重，支持断点续传）
-npx -y bun skills/x-bookmarks/scripts/main.ts --all
+# 指定数量
+npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10
+
+# 全部书签 + 汇总
+npx -y bun skills/x-bookmarks/scripts/main.ts --all --with-summary
 
 # 全部书签，不下载媒体
 npx -y bun skills/x-bookmarks/scripts/main.ts --all --no-download-media
+
+# 自定义输出目录
+npx -y bun skills/x-bookmarks/scripts/main.ts --output /tmp/wqq-x-bookmarks-demo
 ```
 
 `--with-summary` 说明：
@@ -69,6 +78,7 @@ npx -y bun skills/x-bookmarks/scripts/main.ts --all --no-download-media
 
 - `--all` 模式下，中断后重跑自动跳过已导出内容，从上次位置继续
 - 每条推文导出间隔 3-5 秒，分页间隔 2-4 秒，避免触发限流
+- 遇到 429 限流会自动读取 `x-rate-limit-reset` header 精确等待
 - 如需完全重新导出，删除 `exported-ids.json` 即可
 
 ## Output

@@ -6,6 +6,7 @@ export type RetryOptions = {
   backoffFactor?: number;
   onRetry?: (error: Error, attempt: number) => void;
   isRetryable?: (error: Error) => boolean;
+  getDelay?: (error: Error, attempt: number, defaultDelay: number) => number;
 };
 
 export async function retryWithBackoff<T>(
@@ -18,6 +19,7 @@ export async function retryWithBackoff<T>(
     backoffFactor = 2,
     onRetry,
     isRetryable,
+    getDelay,
   } = options;
 
   let lastError: Error | null = null;
@@ -40,8 +42,9 @@ export async function retryWithBackoff<T>(
         onRetry(lastError, attempt);
       }
 
-      // Exponential backoff
-      const delay = delayMs * Math.pow(backoffFactor, attempt - 1);
+      // Exponential backoff, or custom delay from error (e.g. rate limit reset)
+      const defaultDelay = delayMs * Math.pow(backoffFactor, attempt - 1);
+      const delay = getDelay ? getDelay(lastError, attempt, defaultDelay) : defaultDelay;
       await sleep(delay);
     }
   }
