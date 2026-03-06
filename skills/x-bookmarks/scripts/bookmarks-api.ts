@@ -129,7 +129,12 @@ async function fetchBookmarksPageOnce(params: FetchBookmarksPageParams): Promise
 
 export async function fetchBookmarksPage(params: FetchBookmarksPageParams): Promise<unknown> {
   return retryWithBackoff(() => fetchBookmarksPageOnce(params), {
-    maxAttempts: 4,
+    maxAttempts: 5,
+    delayMs: 10_000,
+    backoffFactor: 3,
     isRetryable: (err) => err instanceof HttpStatusError && (err.status === 429 || err.status >= 500),
+    onRetry: (err, attempt) => {
+      console.log(`[bookmarks-api] retry ${attempt}: ${err.message}`);
+    },
   });
 }
