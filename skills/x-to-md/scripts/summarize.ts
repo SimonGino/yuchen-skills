@@ -1,5 +1,5 @@
-import { resolveOpenAiApiFormat } from "../../shared/openai-format";
-import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "../../shared/wqq-skills-env";
+import { resolveOpenAiApiFormat } from "./openai-format";
+import { buildEnvWithFileOnlyKeysFromWqqSkillsEnv } from "./wqq-skills-env";
 
 export type SummarizeOptions = {
   fetchImpl?: typeof fetch;

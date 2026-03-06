@@ -1,17 +1,17 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { fxtweetToMarkdown } from "../../shared/x-runtime/fxtwitter";
-import { localizeMarkdownMedia } from "../../shared/x-runtime/media-localizer";
-import { getXOutputBaseDir } from "../../shared/wqq-skills-env";
-import { parseTweetId } from "../../shared/x-runtime/url-utils";
-import { createArgParser, takeOne, takeMany } from "../../shared/arg-parser";
+import { fxtweetToMarkdown } from "./fxtwitter";
+import { localizeMarkdownMedia } from "./media-localizer";
+import { getXOutputBaseDir } from "./wqq-skills-env";
+import { parseTweetId } from "./url-utils";
+import { createArgParser, takeOne, takeMany } from "./arg-parser";
 import {
   buildTweetOutputDirName,
   findExistingTweetMarkdownPath,
   resolveTweetOutputPath,
   shouldSkipTweetOutput,
-} from "../../shared/x-runtime/output";
+} from "./output";
 import { summarizeMarkdownToChinese } from "./summarize";
 import type { ExportArgs, ExportSummary } from "./types";
 
