@@ -23,3 +23,9 @@ export type ExportSummary = {
   skipped: number;
   failed: number;
 };
+
+export type ExportState = {
+  exportedIds: string[];
+  lastCursor: string | null;
+  lastRunAt: string;
+};
