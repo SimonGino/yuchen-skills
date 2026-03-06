@@ -2,6 +2,15 @@ import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "./constants";
 import { buildCookieHeader } from "./cookies";
 import type { XCookieMap } from "./x-types";
 
+export class HttpStatusError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "HttpStatusError";
+    this.status = status;
+  }
+}
+
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 let cachedHomeHtml: { userAgent: string; html: string; timestamp: number } | null = null;

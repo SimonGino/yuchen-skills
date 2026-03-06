@@ -48,17 +48,14 @@ bun run test
 
 ### 项目结构
 
+每个 skill 完全自包含，所有源码（含 x-runtime 模块）在 `scripts/` 目录内。
+
 ```
 skills/
-  shared/              # 公共工具
-    retry.ts           # 指数退避重试
-    arg-parser.ts      # CLI 参数解析
-    wqq-skills-env.ts  # 环境变量/密钥加载
-    x-runtime/         # X/Twitter API 客户端、认证、媒体下载
-  x-bookmarks/         # 导出 X 书签为 Markdown
-    scripts/main.ts    # CLI 入口
-    SKILL.md           # 技能文档
-  x-to-md/             # 将 X 链接转为 Markdown
-    scripts/main.ts    # CLI 入口
-    SKILL.md           # 技能文档
+  x-bookmarks/         # 导出 X 书签为 Markdown（自包含）
+    scripts/            # 所有源码 + x-runtime 模块
+    SKILL.md            # 技能文档
+  x-to-md/             # 将 X 链接转为 Markdown（自包含）
+    scripts/            # 所有源码 + x-runtime 模块
+    SKILL.md            # 技能文档
 ```

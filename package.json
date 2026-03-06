@@ -4,7 +4,7 @@
   "private": true,
   "description": "X/Twitter 媒体平台研究的个人 Claude Code 技能",
   "scripts": {
-    "test": "bun test skills/**/*.test.ts",
+    "test": "bun test skills/x-bookmarks/scripts/ skills/x-to-md/scripts/",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

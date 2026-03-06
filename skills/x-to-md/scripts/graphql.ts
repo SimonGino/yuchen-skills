@@ -23,6 +23,8 @@ import {
 } from "./http";
 import type { ArticleQueryInfo, XCookieMap } from "./x-types";
 import { unwrapTweetResult } from "./tweet-utils";
+import { HttpStatusError } from "./http";
+import { retryWithBackoff } from "./retry";
 
 function isNonEmptyObject(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && Object.keys(value as Record<string, unknown>).length > 0);
@@ -54,6 +56,32 @@ function extractArticleFromEntity(payload: unknown): unknown {
     root?.article_result_by_rest_id ??
     root?.article_entity_result?.result ??
     null
+  );
+}
+
+async function fetchXApiJson(url: string, headers: Record<string, string>): Promise<unknown> {
+  return retryWithBackoff(
+    async () => {
+      const response = await fetch(url, { headers });
+      const text = await response.text();
+      if (!response.ok) {
+        throw new HttpStatusError(response.status, `X API error (${response.status}): ${text.slice(0, 400)}`);
+      }
+      try {
+        return JSON.parse(text);
+      } catch (error) {
+        throw new Error(`Failed to parse response JSON: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    },
+    {
+      maxAttempts: 4,
+      delayMs: 15_000,
+      backoffFactor: 3,
+      isRetryable: (err) => err instanceof HttpStatusError && (err.status === 429 || err.status >= 500),
+      onRetry: (err, attempt) => {
+        console.log(`[x-api] retry ${attempt}: ${err.message}`);
+      },
+    }
   );
 }
 
@@ -267,20 +295,7 @@ async function fetchTweetResult(
     url.searchParams.set("fieldToggles", JSON.stringify(fieldToggles));
   }
 
-  const response = await fetch(url.toString(), {
-    headers: buildRequestHeaders(cookieMap, userAgent, bearerToken),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`X API error (${response.status}): ${text.slice(0, 400)}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Failed to parse response JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return fetchXApiJson(url.toString(), buildRequestHeaders(cookieMap, userAgent, bearerToken));
 }
 
 export async function fetchTweetDetail(
@@ -326,20 +341,7 @@ export async function fetchTweetDetail(
     url.searchParams.set("fieldToggles", JSON.stringify(fieldToggles));
   }
 
-  const response = await fetch(url.toString(), {
-    headers: buildRequestHeaders(cookieMap, userAgent, bearerToken),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`X API error (${response.status}): ${text.slice(0, 400)}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Failed to parse response JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return fetchXApiJson(url.toString(), buildRequestHeaders(cookieMap, userAgent, bearerToken));
 }
 
 async function fetchArticleEntityById(
@@ -361,20 +363,7 @@ async function fetchArticleEntityById(
     url.searchParams.set("fieldToggles", JSON.stringify(fieldToggles));
   }
 
-  const response = await fetch(url.toString(), {
-    headers: buildRequestHeaders(cookieMap, userAgent, bearerToken),
-  });
-
-  const text = await response.text();
-  if (!response.ok) {
-    throw new Error(`X API error (${response.status}): ${text.slice(0, 400)}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    throw new Error(`Failed to parse response JSON: ${error instanceof Error ? error.message : String(error)}`);
-  }
+  return fetchXApiJson(url.toString(), buildRequestHeaders(cookieMap, userAgent, bearerToken));
 }
 
 export async function fetchXArticle(
