@@ -37,16 +37,22 @@ npx -y bun skills/wqq-x-bookmarks/scripts/debug.ts --count 5 --save-raw
 - 可选 `--with-summary` 同步生成汇总文档（AI 三段式）
 
 ```bash
-npx -y bun skills/wqq-x-bookmarks/scripts/main.ts
+npx -y bun skills/x-bookmarks/scripts/main.ts
 ```
 
 常用参数：
 
 ```bash
-npx -y bun skills/wqq-x-bookmarks/scripts/main.ts --limit 10
-npx -y bun skills/wqq-x-bookmarks/scripts/main.ts --output /tmp/wqq-x-bookmarks-demo
-npx -y bun skills/wqq-x-bookmarks/scripts/main.ts --no-download-media
-npx -y bun skills/wqq-x-bookmarks/scripts/main.ts --limit 10 --with-summary
+npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10
+npx -y bun skills/x-bookmarks/scripts/main.ts --output /tmp/wqq-x-bookmarks-demo
+npx -y bun skills/x-bookmarks/scripts/main.ts --no-download-media
+npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10 --with-summary
+
+# 拉取全部书签（带节流，自动去重，支持断点续传）
+npx -y bun skills/x-bookmarks/scripts/main.ts --all
+
+# 全部书签，不下载媒体
+npx -y bun skills/x-bookmarks/scripts/main.ts --all --no-download-media
 ```
 
 `--with-summary` 说明：
@@ -56,6 +62,14 @@ npx -y bun skills/wqq-x-bookmarks/scripts/main.ts --limit 10 --with-summary
 - 可选 `OPENAI_MODEL`（默认 `gpt-4o-mini`）
 - 若 OpenAI 请求失败或返回格式异常，会自动回退到规则摘要，不中断导出
 - 若缺少 `OPENAI_API_KEY`，会直接报错并中止 summary 生成
+
+## 断点续传
+
+脚本在 output 目录维护 `exported-ids.json` 状态文件，记录已导出的 tweet ID 和上次分页 cursor。
+
+- `--all` 模式下，中断后重跑自动跳过已导出内容，从上次位置继续
+- 每条推文导出间隔 3-5 秒，分页间隔 2-4 秒，避免触发限流
+- 如需完全重新导出，删除 `exported-ids.json` 即可
 
 ## Output
 
