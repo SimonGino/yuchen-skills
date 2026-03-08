@@ -15,7 +15,10 @@ import sys
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).parent.parent
-SUBTITLE_DIR = SKILL_DIR / "data" / "subtitles"
+
+# 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
+DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
+SUBTITLE_DIR = DATA_DIR / "subtitles"
 
 
 def ensure_yt_dlp():

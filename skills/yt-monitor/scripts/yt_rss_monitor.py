@@ -19,7 +19,10 @@ from pathlib import Path
 # 项目根目录
 SKILL_DIR = Path(__file__).parent.parent
 CONFIG_PATH = SKILL_DIR / "config" / "channels.json"
-PROCESSED_PATH = SKILL_DIR / "data" / "processed.json"
+
+# 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
+DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
+PROCESSED_PATH = DATA_DIR / "processed.json"
 
 # YouTube RSS Feed 模板
 RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
@@ -44,6 +47,7 @@ def save_config(config: dict):
 
 def load_processed() -> dict:
     """加载已处理的视频记录"""
+    PROCESSED_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not PROCESSED_PATH.exists():
         return {"processed_videos": {}}
     with open(PROCESSED_PATH, "r", encoding="utf-8") as f:
@@ -351,6 +355,10 @@ def main():
     # list 命令
     subparsers.add_parser("list", help="列出所有监控频道")
 
+    # mark 命令
+    mark_parser = subparsers.add_parser("mark", help="标记视频为已处理")
+    mark_parser.add_argument("video_ids", nargs="+", help="视频 ID 列表")
+
     args = parser.parse_args()
 
     if args.command == "check":
@@ -365,6 +373,16 @@ def main():
         add_channel(args.name, args.url)
     elif args.command == "list":
         list_channels()
+    elif args.command == "mark":
+        processed = load_processed()
+        for vid in args.video_ids:
+            processed["processed_videos"][vid] = {
+                "title": "",
+                "channel": "",
+                "imported_at": datetime.now(timezone.utc).isoformat(),
+            }
+        save_processed(processed)
+        print(f"✅ 已标记 {len(args.video_ids)} 个视频为已处理")
     else:
         # 默认：检查新视频
         new_videos = check_new_videos()

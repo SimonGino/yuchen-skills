@@ -18,16 +18,17 @@ description: "YouTube 频道监控 + 字幕下载 + AI 总结。监控关注的 
 ## 文件结构
 
 ```
-yt-monitor/
+skills/yt-monitor/
 ├── SKILL.md
 ├── scripts/
 │   ├── yt_rss_monitor.py        ← YouTube RSS 监控（无需 API Key）
 │   └── yt_subtitle_dl.py        ← 字幕下载（yt-dlp）
-├── config/
-│   └── channels.json            ← 频道配置
-└── data/
-    ├── processed.json           ← 已处理视频记录
-    └── subtitles/               ← 下载的字幕文本（自动生成）
+└── config/
+    └── channels.json            ← 频道配置
+
+~/.wqq-skills/yt-monitor/        ← 运行时数据（自动创建）
+├── processed.json               ← 已处理视频记录
+└── subtitles/                   ← 下载的字幕文本
 ```
 
 ## 使用方式
@@ -37,9 +38,9 @@ yt-monitor/
 ### 「检查频道更新」/「有什么新视频」
 
 ```bash
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7
 # 只查某个频道：
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7 --channel 老李
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老李
 ```
 
 向用户报告新视频列表（标题、链接、发布时间）。`--channel` 支持模糊匹配（子字符串，大小写不敏感）。
@@ -52,9 +53,9 @@ python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7 --channel 老李
 
 **第一步：检查新视频**
 ```bash
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7 --json
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json
 # 或只查某个频道：
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7 --json --channel 老李
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --channel 老李
 ```
 
 注意：`--json` 模式下日志输出到 stderr，stdout 只有纯 JSON。
@@ -62,13 +63,13 @@ python3 {SKILL_DIR}/scripts/yt_rss_monitor.py check --days 7 --json --channel �
 **第二步：下载字幕**
 将视频 URL 传给字幕下载脚本：
 ```bash
-python3 {SKILL_DIR}/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
+python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 ```
 
-字幕会保存为纯文本到 `data/subtitles/{video_id}.txt`。
+字幕会保存为纯文本到 `~/.wqq-skills/yt-monitor/subtitles/{video_id}.txt`。
 
 **第三步：阅读字幕并总结**
-用 Read 工具读取 `data/subtitles/` 下的 `.txt` 文件，然后直接生成总结。
+用 Read 工具读取 `~/.wqq-skills/yt-monitor/subtitles/` 下的 `.txt` 文件，然后直接生成总结。
 
 总结应包含：
 - 视频标题和频道
@@ -77,7 +78,10 @@ python3 {SKILL_DIR}/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 - 总结（2-3 句话概括全片）
 
 **第四步：标记已处理**
-总结完成后，调用 `yt_rss_monitor.py` 的 `mark_as_processed` 函数标记视频。
+总结完成后，用 mark 命令标记视频（传入 video_id）：
+```bash
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
+```
 
 ---
 
@@ -86,7 +90,7 @@ python3 {SKILL_DIR}/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 直接下载指定视频的字幕：
 
 ```bash
-python3 {SKILL_DIR}/scripts/yt_subtitle_dl.py download "https://www.youtube.com/watch?v=xxx"
+python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "https://www.youtube.com/watch?v=xxx"
 ```
 
 然后用 Read 工具读取生成的文本文件。
@@ -96,7 +100,7 @@ python3 {SKILL_DIR}/scripts/yt_subtitle_dl.py download "https://www.youtube.com/
 ### 「添加频道」/「关注新的 YouTube 频道」
 
 ```bash
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
 ```
 
 ---
@@ -104,7 +108,15 @@ python3 {SKILL_DIR}/scripts/yt_rss_monitor.py add "频道名称" "https://www.yo
 ### 「查看频道列表」
 
 ```bash
-python3 {SKILL_DIR}/scripts/yt_rss_monitor.py list
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py list
+```
+
+---
+
+### 「标记视频为已处理」
+
+```bash
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 ```
 
 ---
@@ -130,7 +142,7 @@ python3 {SKILL_DIR}/scripts/yt_rss_monitor.py list
 1. `yt_rss_monitor.py check --json` → 获取新视频 URL 列表
 2. `yt_subtitle_dl.py download URL1 URL2 ...` → 下载字幕
 3. 读取字幕文本 → Claude 生成总结
-4. 标记已处理 → 避免下次重复
+4. `yt_rss_monitor.py mark VIDEO_ID1 ...` → 标记已处理，避免下次重复
 
 ## 故障处理
 
@@ -140,7 +152,7 @@ python3 {SKILL_DIR}/scripts/yt_rss_monitor.py list
 
 ## 注意事项
 
-- `{SKILL_DIR}` 替换为 Skill 实际路径
+- 所有命令从仓库根目录运行
 - 字幕优先下载中文（zh/zh-Hans/zh-CN/zh-TW/zh-Hant），没有则下载英文（en）
 - 自动生成的字幕质量可能不如手动字幕，总结时注意甄别
-- 字幕文件保存在 `data/subtitles/`，可定期清理
+- 字幕文件保存在 `~/.wqq-skills/yt-monitor/subtitles/`，可定期清理
