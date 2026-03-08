@@ -1,0 +1,18 @@
+{
+  "channels": [
+    {
+      "name": "老李玩钱",
+      "handle": "@老李玩钱",
+      "url": "https://www.youtube.com/@%E8%80%81%E6%9D%8E%E7%8E%A9%E9%92%B1",
+      "channel_id": "UCo2gxyermsLBSCxFHvJs0Zg"
+    },
+    {
+      "name": "阳光财经",
+      "handle": "@SUNNYFINANCE",
+      "url": "https://www.youtube.com/@SUNNYFINANCE",
+      "channel_id": "UC2I5em6UyBpQiO-8ZW0nV3w"
+    }
+  ],
+  "subtitle_lang": "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
+  "default_output": "summary"
+}
