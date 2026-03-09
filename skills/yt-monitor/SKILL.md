@@ -39,9 +39,24 @@ skills/yt-monitor/
 
 ### 「检查频道更新」/「有什么新视频」
 
+根据用户是否指定了频道，决定是否需要频道选择交互：
+
+**第零步：确定要检查的频道**
+
+- **用户已指定频道**（如「检查老李的更新」）→ 跳过选择，直接用 `--channel` 执行
+- **用户未指定频道** → 先获取频道列表：
+  ```bash
+  python3 skills/yt-monitor/scripts/yt_rss_monitor.py list
+  ```
+  - **列表只有 1 个频道** → 跳过选择，直接检查该频道
+  - **列表有 2 个以上频道** → 使用 **AskUserQuestion** 展示频道列表，提供「全部频道」和各频道名选项，让用户选择要检查的频道
+
+**第一步：执行检查**
+
 ```bash
+# 检查全部频道：
 python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7
-# 只查某个频道：
+# 检查指定频道：
 python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老李
 ```
 
@@ -62,8 +77,19 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --chan
 
 注意：`--json` 模式下日志输出到 stderr，stdout 只有纯 JSON。
 
+> 频道选择逻辑同上「检查频道更新」章节：用户未指定频道且有多个频道时，先用 AskUserQuestion 让用户选择。
+
+**第一步半：选择要总结的视频**
+
+根据检查结果决定是否需要视频选择交互：
+
+- **没有新视频** → 直接告知用户「没有新视频」，流程结束
+- **只有 1 个新视频** → 跳过选择，直接进入第二步
+- **用户明确要求全部总结**（如「全部总结」「都看看」）→ 跳过选择，处理全部视频
+- **有 2 个以上新视频** → 使用 **AskUserQuestion** 展示视频列表（编号 + 标题 + 发布时间），提供「全部总结」和各视频的选项，让用户选择要总结的视频（支持多选）
+
 **第二步：下载字幕**
-将视频 URL 传给字幕下载脚本：
+将用户选择的视频 URL 传给字幕下载脚本：
 ```bash
 python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 ```
@@ -108,6 +134,25 @@ python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "https://www.youtub
 
 ### 「添加频道」/「关注新的 YouTube 频道」
 
+根据用户提供的信息量，决定是否需要交互确认：
+
+**场景 A：用户提供了频道 URL（但未提供频道名）**
+
+1. 先从 URL 中解析频道 handle，向用户展示解析结果（频道名 + handle）
+2. 使用 **AskUserQuestion** 询问用户：「即将添加频道 XXX（@handle），确认添加？」，提供「确认」「取消」选项
+3. 用户确认后执行：
+```bash
+python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
+```
+
+**场景 B：用户只提供了频道名，没有 URL**
+
+1. 使用 **AskUserQuestion** 请求用户补充频道 URL 或 handle：「请提供该频道的 YouTube URL 或 @handle，例如 https://www.youtube.com/@xxx」
+2. 用户提供后，按场景 A 的流程执行
+
+**场景 C：用户同时提供了频道名和 URL，信息完整**
+
+直接执行添加，无需额外确认：
 ```bash
 python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
 ```
@@ -148,10 +193,11 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 
 当用户说「检查频道更新，帮我总结新视频」时：
 
-1. `yt_rss_monitor.py check --json` → 获取新视频 URL 列表
-2. `yt_subtitle_dl.py download URL1 URL2 ...` → 下载字幕
-3. 读取字幕文本 → Claude 生成总结
-4. `yt_rss_monitor.py mark VIDEO_ID1 ...` → 标记已处理，避免下次重复
+1. `yt_rss_monitor.py list` → 获取频道列表；若多频道且用户未指定 → AskUserQuestion 选择频道
+2. `yt_rss_monitor.py check --json` → 获取新视频列表；若多个新视频 → AskUserQuestion 选择要总结的视频
+3. `yt_subtitle_dl.py download URL1 URL2 ...` → 下载用户选择的视频字幕
+4. 读取字幕文本 → Claude 生成总结
+5. `yt_rss_monitor.py mark VIDEO_ID1 ...` → 标记已处理，避免下次重复
 
 ## 故障处理
 
