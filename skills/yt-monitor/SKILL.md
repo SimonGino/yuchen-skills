@@ -12,8 +12,7 @@ description: "YouTube 频道监控 + 字幕下载 + AI 总结。监控关注的 
 ## 前置条件
 
 1. **安装 yt-dlp**：`brew install yt-dlp` 或 `pip install yt-dlp`
-2. **（可选）Gemini API Key**：用于无字幕视频的音频转录。在 `~/.wqq-skills/.env` 中配置 `GEMINI_API_KEY=你的key`
-3. **（可选）安装 mlx-whisper**：`pip install mlx-whisper`，作为音频转录的本地兜底方案（仅 Apple Silicon Mac）
+2. **（可选）安装 mlx-whisper**：`pip install mlx-whisper`，用于无字幕视频的本地音频转录（仅 Apple Silicon Mac）
 
 ## 文件结构
 
@@ -71,7 +70,7 @@ python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 
 字幕会保存为纯文本到 `~/.wqq-skills/yt-monitor/subtitles/{video_id}.txt`。
 
-如果视频没有字幕，脚本会自动尝试音频转录回退（Gemini API → 本地 mlx-whisper）。
+如果视频没有字幕，脚本会自动使用本地 mlx-whisper 进行音频转录。
 
 如果文本超长（>15000 字符），脚本会自动分块为 `{video_id}_part1.txt`、`_part2.txt` 等。
 
@@ -157,11 +156,8 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 ## 故障处理
 
 - **「yt-dlp 未安装」**：提示 `brew install yt-dlp` 或 `pip install yt-dlp`
-- **「没有找到字幕」**：脚本会自动尝试音频转录回退。如果转录也失败，检查：
-  - 是否配置了 `GEMINI_API_KEY`（在 `~/.wqq-skills/.env` 中）
-  - 是否安装了 mlx-whisper（`pip install mlx-whisper`，仅 Apple Silicon Mac）
-  - 如果两者都不可用，告知用户需要配置至少一种转录方案
-- **「音频转录失败」**：可能是网络问题或 API 配额不足，检查 stderr 输出中的具体错误信息
+- **「没有找到字幕」**：脚本会自动使用 mlx-whisper 进行音频转录。如果转录也失败，检查是否安装了 mlx-whisper（`pip install mlx-whisper`，仅 Apple Silicon Mac）
+- **「音频转录失败」**：检查 stderr 输出中的具体错误信息
 - **「channel_id 解析失败」**：手动在 `config/channels.json` 中填写 channel_id
 
 ## 注意事项
@@ -169,6 +165,6 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 - 所有命令从仓库根目录运行
 - 字幕优先下载中文（zh/zh-Hans/zh-CN/zh-TW/zh-Hant），没有则下载英文（en）
 - 自动生成的字幕质量可能不如手动字幕，总结时注意甄别
-- 音频转录（`subtitle_type: "gemini"` 或 `"mlx-whisper"`）的文本可能不如字幕精确，总结时注意甄别
+- 音频转录（`subtitle_type: "mlx-whisper"`）的文本可能不如字幕精确，总结时注意甄别
 - 字幕文件保存在 `~/.wqq-skills/yt-monitor/subtitles/`，可定期清理
 - 超长文本会自动分块（阈值 15000 字符），分块文件以 `_partN.txt` 命名
