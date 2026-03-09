@@ -18,11 +18,14 @@ from pathlib import Path
 
 # 项目根目录
 SKILL_DIR = Path(__file__).parent.parent
-CONFIG_PATH = SKILL_DIR / "config" / "channels.json"
 
 # 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
 DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
+CONFIG_PATH = DATA_DIR / "channels.json"
 PROCESSED_PATH = DATA_DIR / "processed.json"
+
+# 仓库内的示例配置（用于首次初始化）
+EXAMPLE_CONFIG_PATH = SKILL_DIR / "config" / "channels.example.json"
 
 # YouTube RSS Feed 模板
 RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
@@ -33,8 +36,28 @@ YT_NS = "http://www.youtube.com/xml/schemas/2015"
 MEDIA_NS = "http://search.yahoo.com/mrss/"
 
 
+def _ensure_config():
+    """确保运行时配置存在，必要时从示例初始化"""
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if CONFIG_PATH.exists():
+        return
+    # 从仓库示例初始化
+    if EXAMPLE_CONFIG_PATH.exists():
+        with open(EXAMPLE_CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = f.read()
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            f.write(data)
+        print(f"已初始化配置: {CONFIG_PATH}", file=sys.stderr)
+        return
+    # 创建空配置
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({"channels": []}, f, ensure_ascii=False, indent=2)
+    print(f"已创建空配置: {CONFIG_PATH}，请用 add 命令添加频道", file=sys.stderr)
+
+
 def load_config() -> dict:
     """加载频道配置"""
+    _ensure_config()
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -302,7 +325,6 @@ def add_channel(name: str, url: str):
         "handle": "",
         "url": url,
         "channel_id": channel_id,
-        "notebook_id": "",
     }
 
     config.setdefault("channels", []).append(new_channel)

@@ -1,0 +1,10 @@
+{
+  "channels": [
+    {
+      "name": "频道名称",
+      "handle": "@handle",
+      "url": "https://www.youtube.com/@handle",
+      "channel_id": ""
+    }
+  ]
+}

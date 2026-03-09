@@ -22,14 +22,17 @@ skills/yt-monitor/
 ├── SKILL.md
 ├── scripts/
 │   ├── yt_rss_monitor.py        ← YouTube RSS 监控（无需 API Key）
-│   └── yt_subtitle_dl.py        ← 字幕下载（yt-dlp）
+│   └── yt_subtitle_dl.py        ← 字幕下载（yt-dlp，Python 实现）
 └── config/
-    └── channels.json            ← 频道配置
+    └── channels.example.json    ← 频道配置示例
 
 ~/.wqq-skills/yt-monitor/        ← 运行时数据（自动创建）
+├── channels.json                ← 频道配置（首次运行从示例初始化）
 ├── processed.json               ← 已处理视频记录
 └── subtitles/                   ← 下载的字幕文本
 ```
+
+> 注：本 skill 使用 Python 而非 TypeScript，因为依赖 yt-dlp CLI 和可选的 mlx-whisper 本地模型。
 
 ## 使用方式
 
