@@ -25,6 +25,17 @@ npx -y bun skills/x-to-md/scripts/main.ts \
   --urls https://x.com/<user>/status/<id>
 ```
 
+### Python skill (yt-monitor)
+
+```bash
+# 初始化环境（首次）
+uv sync --project skills/yt-monitor --extra transcribe
+
+# 运行 yt-monitor 脚本
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py list
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL"
+```
+
 ## 密钥管理
 
 - API 密钥放在 `$HOME/.wqq-skills/.env`。

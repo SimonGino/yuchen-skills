@@ -11,8 +11,9 @@ description: "YouTube 频道监控 + 字幕下载 + AI 总结。监控关注的 
 
 ## 前置条件
 
-1. **安装 yt-dlp**：`brew install yt-dlp` 或 `pip install yt-dlp`
-2. **（可选）安装 mlx-whisper**：`pip install mlx-whisper`，用于无字幕视频的本地音频转录（仅 Apple Silicon Mac）
+1. **安装 uv**：`curl -LsSf https://astral.sh/uv/install.sh | sh`
+2. **初始化环境**：`uv sync --project skills/yt-monitor`（自动安装 Python 3.10+ 和 yt-dlp）
+3. **（可选）安装 mlx-whisper**：`uv sync --project skills/yt-monitor --extra transcribe`，用于无字幕视频的本地音频转录（仅 Apple Silicon Mac）
 
 ## 文件结构
 
@@ -46,7 +47,7 @@ skills/yt-monitor/
 - **用户已指定频道**（如「检查老李的更新」）→ 跳过选择，直接用 `--channel` 执行
 - **用户未指定频道** → 先获取频道列表：
   ```bash
-  python3 skills/yt-monitor/scripts/yt_rss_monitor.py list
+  uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py list
   ```
   - **列表只有 1 个频道** → 跳过选择，直接检查该频道
   - **列表有 2 个以上频道** → 使用 **AskUserQuestion** 展示频道列表，提供「全部频道」和各频道名选项，让用户选择要检查的频道
@@ -55,9 +56,9 @@ skills/yt-monitor/
 
 ```bash
 # 检查全部频道：
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7
 # 检查指定频道：
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老李
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老李
 ```
 
 向用户报告新视频列表（标题、链接、发布时间）。`--channel` 支持模糊匹配（子字符串，大小写不敏感）。
@@ -70,9 +71,9 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老
 
 **第一步：检查新视频**
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json
 # 或只查某个频道：
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --channel 老李
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --channel 老李
 ```
 
 注意：`--json` 模式下日志输出到 stderr，stdout 只有纯 JSON。
@@ -91,7 +92,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --chan
 **第二步：下载字幕**
 将用户选择的视频 URL 传给字幕下载脚本：
 ```bash
-python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 ```
 
 字幕会保存为纯文本到 `~/.wqq-skills/yt-monitor/subtitles/{video_id}.txt`。
@@ -115,7 +116,7 @@ python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "URL1" "URL2" ...
 **第四步：标记已处理**
 总结完成后，用 mark 命令标记视频（传入 video_id）：
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 ```
 
 ---
@@ -125,7 +126,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 直接下载指定视频的字幕：
 
 ```bash
-python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "https://www.youtube.com/watch?v=xxx"
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_dl.py download "https://www.youtube.com/watch?v=xxx"
 ```
 
 然后用 Read 工具读取生成的文本文件。
@@ -142,7 +143,7 @@ python3 skills/yt-monitor/scripts/yt_subtitle_dl.py download "https://www.youtub
 2. 使用 **AskUserQuestion** 询问用户：「即将添加频道 XXX（@handle），确认添加？」，提供「确认」「取消」选项
 3. 用户确认后执行：
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
 ```
 
 **场景 B：用户只提供了频道名，没有 URL**
@@ -154,7 +155,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://
 
 直接执行添加，无需额外确认：
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://www.youtube.com/@handle"
 ```
 
 ---
@@ -162,7 +163,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py add "频道名称" "https://
 ### 「查看频道列表」
 
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py list
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py list
 ```
 
 ---
@@ -170,7 +171,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py list
 ### 「标记视频为已处理」
 
 ```bash
-python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 ```
 
 ---
@@ -202,7 +203,7 @@ python3 skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
 ## 故障处理
 
 - **「yt-dlp 未安装」**：提示 `brew install yt-dlp` 或 `pip install yt-dlp`
-- **「没有找到字幕」**：脚本会自动使用 mlx-whisper 进行音频转录。如果转录也失败，检查是否安装了 mlx-whisper（`pip install mlx-whisper`，仅 Apple Silicon Mac）
+- **「没有找到字幕」**：脚本会自动使用 mlx-whisper 进行音频转录。如果转录也失败，检查是否安装了 mlx-whisper（`uv sync --project skills/yt-monitor --extra transcribe`，仅 Apple Silicon Mac）
 - **「音频转录失败」**：检查 stderr 输出中的具体错误信息
 - **「channel_id 解析失败」**：手动在 `config/channels.json` 中填写 channel_id
 
