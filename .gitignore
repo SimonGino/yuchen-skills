@@ -6,4 +6,6 @@
 node_modules/
 dist/
 bun.lockb
+.venv/
+uv.lock
 wqq-x-bookmarks-output/

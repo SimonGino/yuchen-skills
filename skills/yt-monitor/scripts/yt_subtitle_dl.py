@@ -30,7 +30,7 @@ def _check_mlx_whisper() -> bool:
     """检查 mlx-whisper 是否可用"""
     try:
         result = subprocess.run(
-            [sys.executable, "-c", "import mlx_whisper"],
+            ["uv", "run", "--project", str(SKILL_DIR), "python", "-c", "import mlx_whisper"],
             capture_output=True, timeout=10,
         )
         return result.returncode == 0
@@ -96,7 +96,7 @@ def _transcribe_mlx_whisper(audio_path: str) -> str | None:
     )
     try:
         result = subprocess.run(
-            [sys.executable, "-c", script, audio_path],
+            ["uv", "run", "--project", str(SKILL_DIR), "python", "-c", script, audio_path],
             capture_output=True, text=True, timeout=600,
         )
         if result.returncode == 0 and result.stdout.strip():
@@ -133,7 +133,7 @@ def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: s
             "video_id": video_id, "title": title, "channel": channel, "duration": duration,
             "subtitle_file": None, "subtitle_lang": None, "subtitle_type": None,
             "text_length": 0, "chunked": False, "chunk_files": [],
-            "error": "音频转录不可用。请安装 mlx-whisper: pip install mlx-whisper（仅 Apple Silicon Mac）",
+            "error": "音频转录不可用。请运行: uv sync --project skills/yt-monitor --extra transcribe（仅 Apple Silicon Mac）",
         }
 
     transcript = _transcribe_mlx_whisper(audio_path)
