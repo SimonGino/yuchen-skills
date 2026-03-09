@@ -214,13 +214,14 @@ def _transcribe_gemini(audio_path: str, api_key: str, base_url: str = None) -> s
 def _transcribe_mlx_whisper(audio_path: str) -> str | None:
     """用本地 mlx-whisper 转录音频"""
     print("     🤖 使用本地 mlx-whisper 转录（首次使用需下载 ~1.5GB 模型）...", file=sys.stderr)
+    script = (
+        "import sys, mlx_whisper; "
+        'result = mlx_whisper.transcribe(sys.argv[1], path_or_hf_repo="mlx-community/whisper-large-v3-turbo"); '
+        'print(result["text"])'
+    )
     try:
         result = subprocess.run(
-            [sys.executable, "-c", f"""
-import mlx_whisper
-result = mlx_whisper.transcribe("{audio_path}", path_or_hf_repo="mlx-community/whisper-large-v3-turbo")
-print(result["text"])
-"""],
+            [sys.executable, "-c", script, audio_path],
             capture_output=True, text=True, timeout=600,
         )
         if result.returncode == 0 and result.stdout.strip():
