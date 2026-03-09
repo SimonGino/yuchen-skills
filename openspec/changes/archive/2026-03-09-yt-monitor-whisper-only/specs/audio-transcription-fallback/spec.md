@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Automatic audio transcription fallback when no subtitles available
 When `download_subtitle()` fails to find both manual and auto-generated subtitles, the system SHALL automatically download the video's audio and transcribe it using local mlx-whisper, producing a text file in the same format as subtitle-derived text.
@@ -18,33 +18,17 @@ When `download_subtitle()` fails to find both manual and auto-generated subtitle
 - **WHEN** a video has manual or auto-generated subtitles available
 - **THEN** the system SHALL use the subtitle as before and NOT download audio or attempt transcription
 
-### Requirement: Local mlx-whisper transcription
-The system SHALL use local mlx-whisper as the sole transcription method for videos without subtitles.
+## REMOVED Requirements
 
-#### Scenario: mlx-whisper installed and functional
-- **WHEN** mlx-whisper is installed (`python3 -c "import mlx_whisper"` succeeds)
-- **THEN** the system SHALL use mlx-whisper with `large-v3-turbo` model to transcribe the audio file
-- **AND** save the transcription text to `{video_id}.txt`
+### Requirement: Gemini API audio transcription
+**Reason**: Simplifying to single local transcription path. Gemini API adds external dependency and API key management complexity without sufficient benefit.
+**Migration**: mlx-whisper is now the sole transcription method. Install with `pip install mlx-whisper`.
 
-#### Scenario: mlx-whisper not installed
-- **WHEN** mlx-whisper import fails
-- **THEN** the system SHALL return `success: False` with error suggesting `pip install mlx-whisper`
+### Requirement: API key configuration
+**Reason**: `GEMINI_API_KEY` and `GEMINI_BASE_URL` are no longer needed since Gemini transcription is removed.
+**Migration**: These environment variables can be safely removed from `~/.wqq-skills/.env`.
 
-#### Scenario: First-time model download
-- **WHEN** mlx-whisper is used for the first time and the model is not cached
-- **THEN** the system SHALL print a progress message indicating model download (~1.5GB)
-
-### Requirement: Audio download via yt-dlp
-The system SHALL download audio using yt-dlp with mp3 format.
-
-#### Scenario: Audio download succeeds
-- **WHEN** audio download is requested for a video
-- **THEN** the system SHALL run `yt-dlp -x --audio-format mp3` to extract audio
-- **AND** save it to a temporary location under the subtitles directory
-
-#### Scenario: Audio download fails
-- **WHEN** yt-dlp fails to download audio (geo-restricted, deleted, etc.)
-- **THEN** the system SHALL return `success: False` with `error` describing the failure
+## ADDED Requirements
 
 ### Requirement: MP3 download deduplication
 The system SHALL check for existing MP3 files before downloading to avoid redundant downloads.
@@ -57,15 +41,3 @@ The system SHALL check for existing MP3 files before downloading to avoid redund
 #### Scenario: MP3 file does not exist
 - **WHEN** audio download is requested for a video AND no existing MP3 file is found
 - **THEN** the system SHALL download the audio using `yt-dlp -x --audio-format mp3` as before
-
-### Requirement: Temporary audio file cleanup
-The system SHALL delete temporary audio files (mp3) after transcription is complete, regardless of success or failure.
-
-#### Scenario: Successful transcription cleanup
-- **WHEN** transcription completes successfully
-- **THEN** all temporary mp3 files SHALL be deleted
-- **AND** only the final `.txt` file remains
-
-#### Scenario: Failed transcription cleanup
-- **WHEN** transcription fails at any stage
-- **THEN** all temporary mp3 files SHALL still be deleted
