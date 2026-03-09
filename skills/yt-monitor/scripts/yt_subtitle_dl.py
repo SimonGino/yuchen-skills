@@ -3,15 +3,20 @@
 YouTube 字幕下载器
 通过 yt-dlp 下载视频字幕（优先手动字幕，其次自动生成字幕），
 转为纯文本供 Claude 阅读和总结。
+无字幕时自动回退到音频转录（Gemini API → 本地 mlx-whisper）。
+超长文本自动分块。
 """
 from __future__ import annotations
 
 import argparse
+import base64
 import json
 import os
 import re
 import subprocess
 import sys
+import urllib.request
+import urllib.error
 from pathlib import Path
 
 SKILL_DIR = Path(__file__).parent.parent
@@ -19,6 +24,40 @@ SKILL_DIR = Path(__file__).parent.parent
 # 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
 DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
 SUBTITLE_DIR = DATA_DIR / "subtitles"
+ENV_FILE = Path.home() / ".wqq-skills" / ".env"
+
+# 字幕分块阈值（字符数）
+CHUNK_THRESHOLD = 15000
+
+
+def _load_env() -> dict[str, str]:
+    """从 ~/.wqq-skills/.env 读取环境变量"""
+    env = {}
+    if not ENV_FILE.exists():
+        return env
+    with open(ENV_FILE, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, _, value = line.partition("=")
+                key = key.strip()
+                value = value.strip().strip("'\"")
+                env[key] = value
+    return env
+
+
+def _check_mlx_whisper() -> bool:
+    """检查 mlx-whisper 是否可用"""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", "import mlx_whisper"],
+            capture_output=True, timeout=10,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def ensure_yt_dlp():
@@ -29,6 +68,247 @@ def ensure_yt_dlp():
     except (FileNotFoundError, subprocess.CalledProcessError):
         print("错误: 请先安装 yt-dlp:\n  brew install yt-dlp\n  或 pip install yt-dlp", file=sys.stderr)
         return False
+
+
+# ── 音频下载与转录 ───────────────────────────────────────────────────────────
+
+
+def _download_audio(url: str, output_dir: str, video_id: str) -> str | None:
+    """用 yt-dlp 下载音频为 mp3 格式，返回文件路径或 None"""
+    audio_path = os.path.join(output_dir, f"{video_id}_audio.mp3")
+    cmd = [
+        "yt-dlp", "-x", "--audio-format", "mp3",
+        "-o", audio_path,
+        url,
+    ]
+    try:
+        print("     🎵 正在下载音频...", file=sys.stderr)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0 and os.path.exists(audio_path):
+            size_mb = os.path.getsize(audio_path) / (1024 * 1024)
+            print(f"     音频已下载: {size_mb:.1f}MB", file=sys.stderr)
+            return audio_path
+    except subprocess.TimeoutExpired:
+        print("     ⚠️ 音频下载超时", file=sys.stderr)
+    except Exception as e:
+        print(f"     ⚠️ 音频下载失败: {e}", file=sys.stderr)
+    return None
+
+
+def _cleanup_audio(audio_path: str):
+    """清理临时音频文件"""
+    try:
+        if audio_path and os.path.exists(audio_path):
+            os.remove(audio_path)
+    except OSError:
+        pass
+
+
+def _transcribe_gemini_inline(audio_path: str, api_key: str, base_url: str = None) -> str | None:
+    """音频 ≤ 20MB 时，base64 inline 传入 Gemini generateContent"""
+    with open(audio_path, "rb") as f:
+        audio_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+    url = base_url or "https://generativelanguage.googleapis.com"
+    url = f"{url}/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+
+    payload = json.dumps({
+        "contents": [{
+            "parts": [
+                {"text": "请将这段音频转录为纯文本。保留原始语言，不要添加时间戳或格式标记。如果有多种语言，全部保留。"},
+                {"inline_data": {"mime_type": "audio/mp3", "data": audio_b64}},
+            ]
+        }]
+    }).encode("utf-8")
+
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib.request.urlopen(req, timeout=300) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        print(f"     ⚠️ Gemini inline 转录失败: {e}", file=sys.stderr)
+        return None
+
+
+def _transcribe_gemini_upload(audio_path: str, api_key: str, base_url: str = None) -> str | None:
+    """音频 > 20MB 时，通过 Files API 上传后调用 generateContent"""
+    upload_base = base_url or "https://generativelanguage.googleapis.com"
+
+    # Step 1: 上传文件
+    file_size = os.path.getsize(audio_path)
+    print(f"     📤 上传音频到 Gemini Files API ({file_size / (1024*1024):.1f}MB)...", file=sys.stderr)
+
+    # 初始化 resumable upload
+    init_url = f"{upload_base}/upload/v1beta/files?key={api_key}"
+    init_headers = {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": str(file_size),
+        "X-Goog-Upload-Header-Content-Type": "audio/mp3",
+        "Content-Type": "application/json",
+    }
+    init_body = json.dumps({"file": {"display_name": "yt-audio"}}).encode("utf-8")
+
+    try:
+        init_req = urllib.request.Request(init_url, data=init_body, headers=init_headers, method="POST")
+        with urllib.request.urlopen(init_req, timeout=60) as resp:
+            upload_url = resp.headers.get("X-Goog-Upload-URL") or resp.headers.get("x-goog-upload-url")
+            if not upload_url:
+                print("     ⚠️ Gemini Files API 未返回 upload URL", file=sys.stderr)
+                return None
+    except Exception as e:
+        print(f"     ⚠️ Gemini Files API 初始化失败: {e}", file=sys.stderr)
+        return None
+
+    # Step 2: 上传文件内容
+    with open(audio_path, "rb") as f:
+        file_data = f.read()
+
+    upload_headers = {
+        "Content-Length": str(file_size),
+        "X-Goog-Upload-Offset": "0",
+        "X-Goog-Upload-Command": "upload, finalize",
+    }
+    try:
+        upload_req = urllib.request.Request(upload_url, data=file_data, headers=upload_headers, method="POST")
+        with urllib.request.urlopen(upload_req, timeout=300) as resp:
+            file_info = json.loads(resp.read().decode("utf-8"))
+            file_uri = file_info["file"]["uri"]
+            mime_type = file_info["file"].get("mimeType", "audio/mp3")
+    except Exception as e:
+        print(f"     ⚠️ Gemini 文件上传失败: {e}", file=sys.stderr)
+        return None
+
+    # Step 3: generateContent
+    gen_url = f"{upload_base}/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
+    gen_payload = json.dumps({
+        "contents": [{
+            "parts": [
+                {"text": "请将这段音频转录为纯文本。保留原始语言，不要添加时间戳或格式标记。如果有多种语言，全部保留。"},
+                {"file_data": {"mime_type": mime_type, "file_uri": file_uri}},
+            ]
+        }]
+    }).encode("utf-8")
+
+    try:
+        gen_req = urllib.request.Request(gen_url, data=gen_payload, headers={"Content-Type": "application/json"}, method="POST")
+        with urllib.request.urlopen(gen_req, timeout=600) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+    except Exception as e:
+        print(f"     ⚠️ Gemini generateContent 失败: {e}", file=sys.stderr)
+        return None
+
+
+def _transcribe_gemini(audio_path: str, api_key: str, base_url: str = None) -> str | None:
+    """根据文件大小选择 inline 或 upload 路径调用 Gemini 转录"""
+    file_size = os.path.getsize(audio_path)
+    print("     🤖 使用 Gemini API 转录...", file=sys.stderr)
+    if file_size <= 20 * 1024 * 1024:
+        return _transcribe_gemini_inline(audio_path, api_key, base_url)
+    else:
+        return _transcribe_gemini_upload(audio_path, api_key, base_url)
+
+
+def _transcribe_mlx_whisper(audio_path: str) -> str | None:
+    """用本地 mlx-whisper 转录音频"""
+    print("     🤖 使用本地 mlx-whisper 转录（首次使用需下载 ~1.5GB 模型）...", file=sys.stderr)
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", f"""
+import mlx_whisper
+result = mlx_whisper.transcribe("{audio_path}", path_or_hf_repo="mlx-community/whisper-large-v3-turbo")
+print(result["text"])
+"""],
+            capture_output=True, text=True, timeout=600,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+        if result.stderr:
+            print(f"     ⚠️ mlx-whisper 输出: {result.stderr[:200]}", file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("     ⚠️ mlx-whisper 转录超时", file=sys.stderr)
+    except Exception as e:
+        print(f"     ⚠️ mlx-whisper 转录失败: {e}", file=sys.stderr)
+    return None
+
+
+def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: str, channel: str, duration: int) -> dict:
+    """
+    下载音频 → 尝试 Gemini API → 失败则尝试 mlx-whisper → 保存为 txt → 清理。
+    返回与 download_subtitle() 相同结构的 dict。
+    """
+    audio_path = _download_audio(url, output_dir, video_id)
+    if not audio_path:
+        return {
+            "success": False,
+            "video_id": video_id, "title": title, "channel": channel, "duration": duration,
+            "subtitle_file": None, "subtitle_lang": None, "subtitle_type": None,
+            "text_length": 0, "chunked": False, "chunk_files": [],
+            "error": "音频下载失败",
+        }
+
+    transcript = None
+    sub_type = None
+    env = _load_env()
+
+    # 首选: Gemini API
+    gemini_key = env.get("GEMINI_API_KEY")
+    if gemini_key:
+        transcript = _transcribe_gemini(audio_path, gemini_key, env.get("GEMINI_BASE_URL"))
+        if transcript:
+            sub_type = "gemini"
+
+    # 兜底: 本地 mlx-whisper
+    if not transcript and _check_mlx_whisper():
+        transcript = _transcribe_mlx_whisper(audio_path)
+        if transcript:
+            sub_type = "mlx-whisper"
+
+    # 清理音频
+    _cleanup_audio(audio_path)
+
+    if not transcript:
+        hints = []
+        if not gemini_key:
+            hints.append("配置 GEMINI_API_KEY 到 ~/.wqq-skills/.env")
+        if not _check_mlx_whisper():
+            hints.append("安装 mlx-whisper: pip install mlx-whisper")
+        return {
+            "success": False,
+            "video_id": video_id, "title": title, "channel": channel, "duration": duration,
+            "subtitle_file": None, "subtitle_lang": None, "subtitle_type": None,
+            "text_length": 0, "chunked": False, "chunk_files": [],
+            "error": f"音频转录不可用。建议：{'；'.join(hints)}" if hints else "音频转录失败",
+        }
+
+    # 保存转录文本（与字幕格式一致）
+    text_file = os.path.join(output_dir, f"{video_id}.txt")
+    with open(text_file, "w", encoding="utf-8") as f:
+        f.write(f"# {title}\n")
+        f.write(f"频道: {channel}\n")
+        f.write(f"链接: {url}\n")
+        if duration:
+            f.write(f"时长: {_format_duration(duration)}\n")
+        f.write(f"来源: 音频转录 ({sub_type})\n")
+        f.write(f"\n---\n\n")
+        f.write(transcript.strip())
+        f.write("\n")
+
+    # 分块处理
+    text_length, chunked, chunk_files = _check_and_chunk(text_file, video_id, output_dir, title, channel, url, duration)
+
+    print(f"     ✅ 转录已保存: {text_file}", file=sys.stderr)
+    print(f"     来源: {sub_type} | 字符数: {text_length}", file=sys.stderr)
+
+    return {
+        "success": True,
+        "video_id": video_id, "title": title, "channel": channel, "duration": duration,
+        "subtitle_file": text_file, "subtitle_lang": "auto", "subtitle_type": sub_type,
+        "text_length": text_length, "chunked": chunked, "chunk_files": chunk_files,
+        "error": None,
+    }
 
 
 def get_video_info(url: str) -> dict:
@@ -110,17 +390,9 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
             duration = info.get("duration", duration)
 
     if not subtitle_file:
-        return {
-            "success": False,
-            "video_id": video_id,
-            "title": title,
-            "channel": channel,
-            "duration": duration,
-            "subtitle_file": None,
-            "subtitle_lang": None,
-            "subtitle_type": None,
-            "error": "没有找到可用字幕（手动和自动都不存在）",
-        }
+        # 回退到音频转录
+        print("     ⚠️ 没有找到字幕，尝试音频转录回退...", file=sys.stderr)
+        return _transcribe_with_fallback(url, output_dir, video_id, title, channel, duration)
 
     # 解析字幕语言
     sub_lang = _detect_subtitle_lang(subtitle_file)
@@ -135,8 +407,11 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
     except OSError:
         pass
 
+    # 分块处理
+    text_length, chunked, chunk_files = _check_and_chunk(text_file, video_id, output_dir, title, channel, url, duration)
+
     print(f"     ✅ 字幕已保存: {text_file}")
-    print(f"     语言: {sub_lang} | 类型: {'手动' if sub_type == 'manual' else '自动生成'}")
+    print(f"     语言: {sub_lang} | 类型: {'手动' if sub_type == 'manual' else '自动生成'} | 字符数: {text_length}")
 
     return {
         "success": True,
@@ -147,6 +422,9 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
         "subtitle_file": text_file,
         "subtitle_lang": sub_lang,
         "subtitle_type": sub_type,
+        "text_length": text_length,
+        "chunked": chunked,
+        "chunk_files": chunk_files,
         "error": None,
     }
 
@@ -242,6 +520,78 @@ def _convert_to_text(sub_file: str, text_file: str, title: str = "", channel: st
         f.write(f"\n---\n\n")
         f.write(text.strip())
         f.write("\n")
+
+
+# ── 字幕分块 ─────────────────────────────────────────────────────────────────
+
+
+def _check_and_chunk(text_file: str, video_id: str, output_dir: str,
+                     title: str, channel: str, url: str, duration: int) -> tuple[int, bool, list[str]]:
+    """
+    检测文本长度，超过阈值时按段落边界分块。
+
+    Returns:
+        (text_length, chunked, chunk_files)
+    """
+    with open(text_file, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    # 分离元信息头和正文（以 "---\n\n" 分隔）
+    parts = content.split("\n---\n\n", 1)
+    if len(parts) == 2:
+        body = parts[1]
+    else:
+        body = content
+
+    text_length = len(body.strip())
+
+    if text_length <= CHUNK_THRESHOLD:
+        return text_length, False, [os.path.basename(text_file)]
+
+    # 按段落（双换行）切分
+    paragraphs = re.split(r"\n\n+", body.strip())
+    chunks: list[list[str]] = []
+    current_chunk: list[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        para_len = len(para)
+        if current_len + para_len > CHUNK_THRESHOLD and current_chunk:
+            chunks.append(current_chunk)
+            current_chunk = []
+            current_len = 0
+        current_chunk.append(para)
+        current_len += para_len + 2  # +2 for \n\n
+
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    if len(chunks) <= 1:
+        return text_length, False, [os.path.basename(text_file)]
+
+    # 写入分块文件
+    chunk_files = []
+    total = len(chunks)
+    for i, chunk_paras in enumerate(chunks, 1):
+        chunk_path = os.path.join(output_dir, f"{video_id}_part{i}.txt")
+        with open(chunk_path, "w", encoding="utf-8") as f:
+            f.write(f"# {title}\n")
+            f.write(f"频道: {channel}\n")
+            f.write(f"链接: {url}\n")
+            if duration:
+                f.write(f"时长: {_format_duration(duration)}\n")
+            f.write(f"分块: {i}/{total}\n")
+            f.write(f"\n---\n\n")
+            # 重叠：非第一块时包含上一块最后一段
+            if i > 1 and chunks[i - 2]:
+                overlap = chunks[i - 2][-1]
+                f.write(f"[上文重叠]\n{overlap}\n[/上文重叠]\n\n")
+            f.write("\n\n".join(chunk_paras))
+            f.write("\n")
+        chunk_files.append(os.path.basename(chunk_path))
+
+    print(f"     📦 文本已分块: {total} 块（每块 ≤{CHUNK_THRESHOLD} 字符）", file=sys.stderr)
+    return text_length, True, chunk_files
 
 
 def _extract_video_id(url: str) -> str:
