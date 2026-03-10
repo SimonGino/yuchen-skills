@@ -1,9 +1,10 @@
 import path from "node:path";
 import process from "node:process";
 import { readFile, writeFile, mkdir, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import type { CliArgs, Source, SourceMetadata } from "./types";
 import { formatError } from "./retry";
+import { takeMany } from "./arg-parser";
+import { loadWqqSkillsEnvFile } from "./wqq-skills-env";
 import {
   ingestWorkspace,
   type AutoSummary,
@@ -42,34 +43,8 @@ Environment:
 `);
 }
 
-async function loadEnvFile(p: string): Promise<Record<string, string>> {
-  try {
-    const content = await readFile(p, "utf8");
-    const env: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const idx = trimmed.indexOf("=");
-      if (idx === -1) continue;
-      const key = trimmed.slice(0, idx).trim();
-      let val = trimmed.slice(idx + 1).trim();
-      if (
-        (val.startsWith('"') && val.endsWith('"')) ||
-        (val.startsWith("'") && val.endsWith("'"))
-      ) {
-        val = val.slice(1, -1);
-      }
-      env[key] = val;
-    }
-    return env;
-  } catch {
-    return {};
-  }
-}
-
 async function loadEnv(): Promise<void> {
-  const home = homedir();
-  const homeEnv = await loadEnvFile(path.join(home, ".wqq-skills", ".env"));
+  const homeEnv = await loadWqqSkillsEnvFile();
 
   for (const [k, v] of Object.entries(homeEnv)) {
     if (!process.env[k]) process.env[k] = v;
@@ -107,18 +82,6 @@ function parseArgs(argv: string[]): CliArgs {
     help: false,
   };
 
-  const takeMany = (i: number): { items: string[]; next: number } => {
-    const items: string[] = [];
-    let j = i + 1;
-    while (j < argv.length) {
-      const v = argv[j];
-      if (!v || v.startsWith("-")) break;
-      items.push(v);
-      j++;
-    }
-    return { items, next: j - 1 };
-  };
-
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (!a) continue;
@@ -129,10 +92,10 @@ function parseArgs(argv: string[]): CliArgs {
     }
 
     if (a === "--sources") {
-      const { items, next } = takeMany(i);
+      const { items, nextIndex } = takeMany(argv, i);
       if (items.length === 0) throw new Error("Missing files for --sources");
       out.sources.push(...items);
-      i = next;
+      i = nextIndex;
       continue;
     }
 
@@ -184,11 +147,11 @@ function generateTopicSlug(summary: string): string {
   return words.join("-");
 }
 
-function generateOutputDir(
+async function generateOutputDir(
   summary: string,
   baseOutdir: string | null,
   workspace: string,
-): string {
+): Promise<string> {
   const slug = generateTopicSlug(summary);
   const base = baseOutdir
     ? path.resolve(baseOutdir)
@@ -196,19 +159,16 @@ function generateOutputDir(
 
   // Check if exists, add timestamp if needed
   try {
-    const stat = Bun.file(base);
-    if (stat.size >= 0) {
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[-:]/g, "")
-        .split(".")[0];
-      return `${base}-${timestamp}`;
-    }
+    await stat(base);
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[-:]/g, "")
+      .split(".")[0];
+    return `${base}-${timestamp}`;
   } catch {
     // Directory doesn't exist, use base
+    return base;
   }
-
-  return base;
 }
 
 async function parseSourceFile(filePath: string): Promise<Source> {
@@ -536,7 +496,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const outdir = generateOutputDir(summary, args.outdir, workspace);
+  const outdir = await generateOutputDir(summary, args.outdir, workspace);
   await mkdir(outdir, { recursive: true });
   await mkdir(path.join(outdir, "sources"), { recursive: true });
   await mkdir(path.join(outdir, "04-infographics"), { recursive: true });
