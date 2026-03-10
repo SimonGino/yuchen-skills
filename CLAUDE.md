@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-这个仓库包含用于 X/Twitter 媒体平台研究的个人 Claude Code 技能。
+这个仓库包含个人 Claude Code 技能（X/Twitter、WeChat、YouTube 等）。
 
 ## 原则
 
@@ -23,6 +23,9 @@ npx -y bun skills/x-bookmarks/scripts/main.ts --limit 50
 # 将 X 链接转为 Markdown
 npx -y bun skills/x-to-md/scripts/main.ts \
   --urls https://x.com/<user>/status/<id>
+
+# 生成 WeChat 公众号文章
+npx -y bun skills/wqq-wechat-article/scripts/main.ts --workspace ./my-workspace
 ```
 
 ### Python skill (yt-monitor)
@@ -68,5 +71,9 @@ skills/
     SKILL.md            # 技能文档
   x-to-md/             # 将 X 链接转为 Markdown（自包含）
     scripts/            # 所有源码 + x-runtime 模块
+    SKILL.md            # 技能文档
+  wqq-wechat-article/  # 生成 WeChat 公众号教程文章（自包含）
+    scripts/            # 所有源码 + 内联共享工具
+    references/         # 写作风格、合规、模板
     SKILL.md            # 技能文档
 ```
