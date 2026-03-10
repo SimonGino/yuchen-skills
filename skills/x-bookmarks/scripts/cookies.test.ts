@@ -14,7 +14,10 @@ describe("cookies", () => {
     process.env.X_AUTH_TOKEN = "env-auth";
     process.env.X_CT0 = "env-ct0";
     try {
-      const cookieMap = await loadXCookies();
+      const cookieMap = await loadXCookies(undefined, {
+        loadFromBrowser: async () => ({}),
+        readFromFile: async () => null,
+      });
       expect(cookieMap.auth_token).toBe("env-auth");
       expect(cookieMap.ct0).toBe("env-ct0");
     } finally {
