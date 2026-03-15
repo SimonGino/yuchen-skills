@@ -8,8 +8,7 @@
 
 | Skill | 说明 | 运行时 |
 |---|---|---|
-| **x-bookmarks** | 导出 X 书签为 Markdown，支持分页、媒体下载、AI 汇总 | Bun (TypeScript) |
-| **x-to-md** | 将 X 链接批量转为本地 Markdown，自动生成中文摘要 | Bun (TypeScript) |
+| **x-toolkit** | 导出 X 书签或将 X 链接转为本地 Markdown，支持分页、媒体下载、AI 汇总与认证 debug | Bun (TypeScript) |
 | **wqq-wechat-article** | 从素材生成中文教程类公众号文章 + 信息图 prompt | Bun (TypeScript) |
 | **yt-monitor** | YouTube 频道监控 → 字幕下载 → AI 总结 | Python (uv) |
 
@@ -52,8 +51,8 @@ EOF
 
 安装 Claude Code 后，在本仓库目录下启动 Claude，直接用自然语言触发：
 
-- "导出我的 X 书签" → 触发 x-bookmarks
-- "把这条推文转成 Markdown：https://x.com/..." → 触发 x-to-md
+- "导出我的 X 书签" → 触发 x-toolkit
+- "把这条推文转成 Markdown：https://x.com/..." → 触发 x-toolkit
 - "检查 YouTube 频道更新，总结新视频" → 触发 yt-monitor
 - "帮我写一篇公众号文章" → 触发 wqq-wechat-article
 
@@ -61,10 +60,10 @@ EOF
 
 ```bash
 # X 书签导出（默认 50 条）
-npx -y bun skills/x-bookmarks/scripts/main.ts --limit 10
+npx -y bun skills/x-toolkit/scripts/main.ts --mode bookmarks --limit 10
 
 # X 链接转 Markdown
-npx -y bun skills/x-to-md/scripts/main.ts \
+npx -y bun skills/x-toolkit/scripts/main.ts \
   --urls https://x.com/user/status/123456
 
 # WeChat 文章生成
@@ -86,15 +85,17 @@ bun run typecheck
 bun run test
 
 # 运行单个测试文件
-bun test skills/x-bookmarks/scripts/markdown.test.ts
+bun test skills/x-toolkit/scripts/common/markdown.test.ts
 ```
 
 ## 项目结构
 
 ```
 skills/
-  x-bookmarks/           # X 书签导出
-  x-to-md/               # X 链接转 Markdown
+  x-toolkit/             # X 书签导出 / X 链接转 Markdown
+    scripts/common/      # 共享模块
+    scripts/bookmarks/   # 书签专属模块
+    scripts/export/      # URL 导出专属模块
   wqq-wechat-article/    # 公众号文章生成
     references/           # 写作风格、合规规则、模板
   yt-monitor/             # YouTube 频道监控 (Python)
@@ -106,4 +107,5 @@ openspec/                 # Spec-driven 变更管理
 
 ## License
 
-Private / Personal use.
+This repository is licensed under the GNU Affero General Public License v3.0.
+See [LICENSE](./LICENSE) for the full text.

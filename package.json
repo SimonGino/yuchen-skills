@@ -2,9 +2,10 @@
   "name": "yuchen-skills",
   "version": "0.1.0",
   "private": true,
+  "license": "AGPL-3.0-only",
   "description": "X/Twitter 媒体平台研究的个人 Claude Code 技能",
   "scripts": {
-    "test": "bun test skills/x-bookmarks/scripts/ skills/x-to-md/scripts/",
+    "test": "bun test skills/x-toolkit/scripts/",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {

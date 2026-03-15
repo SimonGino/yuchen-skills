@@ -21,16 +21,16 @@ bun run typecheck
 bun run test
 
 # 运行单个测试文件
-bun test skills/x-bookmarks/scripts/markdown.test.ts
+bun test skills/x-toolkit/scripts/common/markdown.test.ts
 
 # 运行某个 skill 的所有测试
-bun test skills/x-bookmarks/scripts/
+bun test skills/x-toolkit/scripts/
 
 # 运行脚本
-npx -y bun skills/<skill>/scripts/main.ts --help
+npx -y bun skills/x-toolkit/scripts/main.ts --mode bookmarks --limit 10
 ```
 
-注意：`package.json` 的 `test` 脚本仅覆盖 `x-bookmarks` 和 `x-to-md`。wqq-wechat-article 测试需单独运行：`bun test skills/wqq-wechat-article/scripts/`。
+注意：`package.json` 的 `test` 脚本目前仅覆盖 `x-toolkit`。wqq-wechat-article 测试需单独运行：`bun test skills/wqq-wechat-article/scripts/`。
 
 ### Python skill (yt-monitor)
 
@@ -42,12 +42,16 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_
 
 ## 架构
 
-### x-bookmarks 与 x-to-md 共享代码
+### x-toolkit 目录结构
 
-这两个 skill 有约 40 个相同的 TypeScript 模块（实际文件副本，非 symlink），包括 `cookies`、`chrome-login`、`http`、`graphql`、`markdown`、`media-localizer`、`tweet-utils` 等。修改共享模块时**必须同步更新两份**。部分文件已有细微差异（如 `graphql.ts`），修改前先 diff 确认。
+X/Twitter 相关能力已合并到 `skills/x-toolkit/`：
 
-- x-bookmarks 独有：`bookmarks-api`、`bookmarks-parser`、`state`、`summary`、`tweet-detail`、`debug`
-- x-to-md 独有：`summarize`
+- `scripts/common/`：共享模块（`cookies`、`chrome-login`、`http`、`graphql`、`markdown`、`media-localizer`、`tweet-utils` 等）
+- `scripts/bookmarks/`：书签导出独有模块（`bookmarks-api`、`bookmarks-parser`、`state`、`summary`、`tweet-detail`、`debug`）
+- `scripts/export/`：URL 推文导出独有模块（`summarize`、导出入口）
+- `scripts/main.ts`：统一入口；有 `--urls` 时走推文导出，否则走书签/Debug 模式
+
+共享模块只维护一份，修改时直接更新 `scripts/common/`。
 
 ### wqq-wechat-article 的 references 机制
 
