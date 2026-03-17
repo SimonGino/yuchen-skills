@@ -1,4 +1,4 @@
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Automatic audio transcription fallback when no subtitles available
 When `download_subtitle()` fails to find both manual and auto-generated subtitles, the system SHALL automatically download the video's audio and transcribe it using local mlx-whisper, producing a text file in the same format as subtitle-derived text.
@@ -10,7 +10,7 @@ When `download_subtitle()` fails to find both manual and auto-generated subtitle
 
 #### Scenario: mlx-whisper not installed — auto-install
 - **WHEN** a video has no subtitles AND mlx-whisper is not installed
-- **THEN** the system SHALL automatically execute `uv sync --project $SKILL_DIR --extra transcribe` to install mlx-whisper
+- **THEN** the system SHALL automatically execute `uv sync --project $HOME/.claude/skills/yt-monitor --extra transcribe` to install mlx-whisper
 - **AND** print progress message indicating installation is in progress
 - **AND** after installation succeeds, proceed with transcription
 
@@ -28,7 +28,7 @@ When `download_subtitle()` fails to find both manual and auto-generated subtitle
 
 #### Scenario: mlx-whisper CLI 调用
 - **WHEN** 需要转录音频文件
-- **THEN** 系统 SHALL 执行 `uv run --project $SKILL_DIR mlx_whisper "{audio_path}" --model mlx-community/whisper-large-v3-turbo --language zh --output-format srt`
+- **THEN** 系统 SHALL 执行 `uv run --project $HOME/.claude/skills/yt-monitor mlx_whisper "{audio_path}" --model mlx-community/whisper-large-v3-turbo --language zh --output-format srt`
 - **AND** 解析输出的 srt 内容，提取纯文本
 
 #### Scenario: 首次使用模型下载
@@ -43,12 +43,12 @@ When `download_subtitle()` fails to find both manual and auto-generated subtitle
 系统 SHALL 在需要音频转录时自动检测 mlx-whisper 是否已安装，未安装则自动安装。
 
 #### Scenario: mlx-whisper 已安装
-- **WHEN** `uv run --project $SKILL_DIR python -c "import mlx_whisper"` 成功
+- **WHEN** `uv run --project $HOME/.claude/skills/yt-monitor python -c "import mlx_whisper"` 成功
 - **THEN** 直接进入转录流程
 
 #### Scenario: mlx-whisper 未安装 — 自动安装成功
 - **WHEN** import 检查失败
-- **THEN** 系统 SHALL 执行 `uv sync --project $SKILL_DIR --extra transcribe`
+- **THEN** 系统 SHALL 执行 `uv sync --project $HOME/.claude/skills/yt-monitor --extra transcribe`
 - **AND** 安装成功后重新检查确认可用
 - **AND** 进入转录流程
 
@@ -57,12 +57,12 @@ When `download_subtitle()` fails to find both manual and auto-generated subtitle
 - **THEN** 系统 SHALL 返回 `success: False` 并在 error 中包含安装失败的 stderr
 
 ### Requirement: mlx-whisper 项目路径
-系统 SHALL 使用 `SKILL_DIR`（`Path(__file__).parent.parent`，即当前 skill 目录）作为 mlx-whisper 的 uv 项目路径。
+系统 SHALL 使用 `$HOME/.claude/skills/yt-monitor` 作为 mlx-whisper 的 uv 项目路径。
 
 #### Scenario: 路径解析
 - **WHEN** 系统构造 `uv run --project` 命令
-- **THEN** 项目路径 SHALL 为 `SKILL_DIR`（脚本所在 skill 的根目录）
-- **AND** 自动适配代码仓库 checkout 和 `~/.claude/skills/` 安装两种场景
+- **THEN** 项目路径 SHALL 为 `Path.home() / ".claude" / "skills" / "yt-monitor"`
+- **AND** 不再使用 `SKILL_DIR`（代码仓库路径）
 
 ### Requirement: Audio download via yt-dlp
 The system SHALL download audio using yt-dlp with mp3 format and authentication arguments.
