@@ -50,15 +50,16 @@ def _ensure_mlx_whisper() -> bool:
     # 未安装，自动安装
     print("     📦 mlx-whisper 未安装，正在自动安装（首次可能较慢）...", file=sys.stderr)
     try:
+        # 不捕获输出，让 uv 的进度条和错误信息直接显示在终端
         subprocess.run(
             ["uv", "sync", "--project", project, "--extra", "transcribe"],
-            capture_output=True, text=True, timeout=300, check=True,
+            check=True, timeout=300,
         )
     except subprocess.TimeoutExpired:
         print("     ⚠️ mlx-whisper 安装超时", file=sys.stderr)
         return False
-    except subprocess.CalledProcessError as e:
-        print(f"     ⚠️ mlx-whisper 安装失败: {e.stderr[:500]}", file=sys.stderr)
+    except subprocess.CalledProcessError:
+        print("     ⚠️ mlx-whisper 安装失败，请检查上面 uv sync 的输出", file=sys.stderr)
         return False
     except FileNotFoundError:
         print("     ⚠️ uv 命令未找到，请确保已安装", file=sys.stderr)
