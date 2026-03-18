@@ -1,22 +1,30 @@
 {
   "name": "yuchen-skills",
   "owner": {
-    "name": "wqq",
-    "email": ""
+    "name": "wqq"
   },
   "metadata": {
-    "description": "X/Twitter 媒体平台研究的个人技能",
-    "version": "0.1.0"
+    "description": "个人 Claude Code 技能集合：X/Twitter、WeChat 公众号、YouTube 频道监控",
+    "version": "1.0.0"
   },
   "plugins": [
     {
-      "name": "x-media-tools",
-      "description": "X/Twitter 内容导出与研究工具",
+      "name": "social-media-tools",
+      "description": "X/Twitter 内容导出与 WeChat 公众号文章生成",
       "source": "./",
-      "strict": false,
+      "strict": true,
       "skills": [
-        "./skills/x-bookmarks",
-        "./skills/x-to-md"
+        "./skills/x-toolkit",
+        "./skills/wqq-wechat-article"
+      ]
+    },
+    {
+      "name": "yt-monitor",
+      "description": "YouTube 频道监控、字幕下载与 AI 总结",
+      "source": "./",
+      "strict": true,
+      "skills": [
+        "./skills/yt-monitor"
       ]
     }
   ]

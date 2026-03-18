@@ -1,6 +1,6 @@
 ---
 name: wqq-x-toolkit
-description: 导出 X 书签或将指定 X/Twitter status URLs 导出为 Markdown，支持 debug 认证验证、媒体下载与中文摘要。
+description: 导出 X 书签或将指定 X/Twitter status URLs 导出为 Markdown，支持 debug 认证验证、媒体下载与中文摘要。Use when user mentions "X书签", "推特书签", "tweet to markdown", "导出推文", "bookmarks", or wants to save/export tweets, bookmarks, or convert X/Twitter URLs to local markdown files.
 ---
 
 # WQQ X Toolkit Workflow
