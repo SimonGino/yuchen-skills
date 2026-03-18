@@ -13,7 +13,9 @@ description: "YouTube 频道监控 + 字幕下载 + AI 总结。监控关注的 
 
 1. **安装 uv**：`curl -LsSf https://astral.sh/uv/install.sh | sh`
 2. **初始化环境**：`uv sync --project skills/yt-monitor`（自动安装 Python 3.10+ 和 yt-dlp）
-3. **（可选）安装 mlx-whisper**：`uv sync --project skills/yt-monitor --extra transcribe`，用于无字幕视频的本地音频转录（仅 Apple Silicon Mac）
+3. **安装 deno**：`curl -fsSL https://deno.land/install.sh | sh`（yt-dlp JS challenge 验证需要）
+4. **Chrome 浏览器登录 YouTube**：yt-dlp 通过 `--cookies-from-browser chrome` 复用浏览器登录态，运行前需确保 Chrome 已登录 YouTube
+5. **mlx-whisper（中文频道必需）**：大多数中文频道没有字幕，音频转录是唯一路径。首次使用时脚本会自动安装（`uv sync --extra transcribe`），仅限 Apple Silicon Mac
 
 ## 文件结构
 
@@ -203,7 +205,10 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monit
 ## 故障处理
 
 - **「yt-dlp 未安装」**：提示 `brew install yt-dlp` 或 `pip install yt-dlp`
-- **「没有找到字幕」**：脚本会自动使用 mlx-whisper 进行音频转录。如果转录也失败，检查是否安装了 mlx-whisper（`uv sync --project skills/yt-monitor --extra transcribe`，仅 Apple Silicon Mac）
+- **「deno 未安装」**：提示 `curl -fsSL https://deno.land/install.sh | sh`，yt-dlp 需要 deno 来执行 JS challenge
+- **「yt-dlp 请求被拦截 / bot 检测」**：确认 Chrome 浏览器已登录 YouTube，yt-dlp 通过 `--cookies-from-browser chrome` 复用登录态
+- **「没有找到字幕」**：脚本会先检测字幕可用性，无字幕时自动使用 mlx-whisper 进行音频转录（首次自动安装，仅 Apple Silicon Mac）
+- **「mlx-whisper 自动安装失败」**：检查 stderr 输出，确认是 Apple Silicon Mac 且网络可用
 - **「音频转录失败」**：检查 stderr 输出中的具体错误信息
 - **「channel_id 解析失败」**：手动在 `config/channels.json` 中填写 channel_id
 

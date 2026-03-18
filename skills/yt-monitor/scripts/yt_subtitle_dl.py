@@ -24,28 +24,69 @@ SUBTITLE_DIR = DATA_DIR / "subtitles"
 # 字幕分块阈值（字符数）
 CHUNK_THRESHOLD = 15000
 
+# yt-dlp 认证参数：YouTube 强制要求 cookie 认证 + JS challenge 验证
+YT_DLP_AUTH_ARGS = ["--cookies-from-browser", "chrome", "--remote-components", "ejs:github"]
 
 
-def _check_mlx_whisper() -> bool:
-    """检查 mlx-whisper 是否可用"""
+
+
+def _ensure_mlx_whisper() -> bool:
+    """检测 mlx-whisper 是否可用，未安装则自动安装。"""
+    project = str(SKILL_DIR)
+
+    def _is_installed() -> bool:
+        try:
+            subprocess.run(
+                ["uv", "run", "--project", project, "python", "-c", "import mlx_whisper"],
+                capture_output=True, timeout=30, check=True,
+            )
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    if _is_installed():
+        return True
+
+    # 未安装，自动安装
+    print("     📦 mlx-whisper 未安装，正在自动安装（首次可能较慢）...", file=sys.stderr)
     try:
-        result = subprocess.run(
-            ["uv", "run", "--project", str(SKILL_DIR), "python", "-c", "import mlx_whisper"],
-            capture_output=True, timeout=10,
+        # 不捕获输出，让 uv 的进度条和错误信息直接显示在终端
+        subprocess.run(
+            ["uv", "sync", "--project", project, "--extra", "transcribe"],
+            check=True, timeout=300,
         )
-        return result.returncode == 0
-    except Exception:
+    except subprocess.TimeoutExpired:
+        print("     ⚠️ mlx-whisper 安装超时", file=sys.stderr)
         return False
+    except subprocess.CalledProcessError:
+        print("     ⚠️ mlx-whisper 安装失败，请检查上面 uv sync 的输出", file=sys.stderr)
+        return False
+    except FileNotFoundError:
+        print("     ⚠️ uv 命令未找到，请确保已安装", file=sys.stderr)
+        return False
+
+    # 安装后再次确认
+    if _is_installed():
+        print("     ✅ mlx-whisper 安装成功", file=sys.stderr)
+        return True
+
+    print("     ⚠️ mlx-whisper 安装后仍无法导入", file=sys.stderr)
+    return False
 
 
 def ensure_yt_dlp():
-    """检查 yt-dlp 是否可用"""
+    """检查 yt-dlp 和 deno 是否可用"""
     try:
         subprocess.run(["yt-dlp", "--version"], capture_output=True, check=True)
-        return True
     except (FileNotFoundError, subprocess.CalledProcessError):
         print("错误: 请先安装 yt-dlp:\n  brew install yt-dlp\n  或 pip install yt-dlp", file=sys.stderr)
         return False
+    try:
+        subprocess.run(["deno", "--version"], capture_output=True, check=True)
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        print("错误: 请先安装 deno（yt-dlp JS challenge 需要）:\n  curl -fsSL https://deno.land/install.sh | sh", file=sys.stderr)
+        return False
+    return True
 
 
 # ── 音频下载与转录 ───────────────────────────────────────────────────────────
@@ -60,6 +101,7 @@ def _download_audio(url: str, output_dir: str, video_id: str) -> str | None:
         return audio_path
     cmd = [
         "yt-dlp", "-x", "--audio-format", "mp3",
+        *YT_DLP_AUTH_ARGS,
         "-o", audio_path,
         url,
     ]
@@ -70,6 +112,8 @@ def _download_audio(url: str, output_dir: str, video_id: str) -> str | None:
             size_mb = os.path.getsize(audio_path) / (1024 * 1024)
             print(f"     音频已下载: {size_mb:.1f}MB", file=sys.stderr)
             return audio_path
+        if result.returncode != 0 and result.stderr:
+            print(f"     ⚠️ yt-dlp stderr: {result.stderr[:500]}", file=sys.stderr)
     except subprocess.TimeoutExpired:
         print("     ⚠️ 音频下载超时", file=sys.stderr)
     except Exception as e:
@@ -87,27 +131,62 @@ def _cleanup_audio(audio_path: str):
 
 
 def _transcribe_mlx_whisper(audio_path: str) -> str | None:
-    """用本地 mlx-whisper 转录音频"""
+    """用本地 mlx-whisper CLI 转录音频，返回纯文本。"""
     print("     🤖 使用本地 mlx-whisper 转录（首次使用需下载 ~1.5GB 模型）...", file=sys.stderr)
-    script = (
-        "import sys, mlx_whisper; "
-        'result = mlx_whisper.transcribe(sys.argv[1], path_or_hf_repo="mlx-community/whisper-large-v3-turbo"); '
-        'print(result["text"])'
-    )
+    project = str(SKILL_DIR)
+    cmd = [
+        "uv", "run", "--project", project,
+        "mlx_whisper", audio_path,
+        "--model", "mlx-community/whisper-large-v3-turbo",
+        "--language", "zh",
+        "--output-format", "srt",
+    ]
     try:
-        result = subprocess.run(
-            ["uv", "run", "--project", str(SKILL_DIR), "python", "-c", script, audio_path],
-            capture_output=True, text=True, timeout=600,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-        if result.stderr:
-            print(f"     ⚠️ mlx-whisper 输出: {result.stderr[:200]}", file=sys.stderr)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+        if result.returncode != 0:
+            if result.stderr:
+                print(f"     ⚠️ mlx-whisper stderr: {result.stderr[:500]}", file=sys.stderr)
+            return None
+        # mlx_whisper CLI 将 srt 写入与音频同目录的 .srt 文件
+        srt_path = os.path.splitext(audio_path)[0] + ".srt"
+        if os.path.exists(srt_path):
+            with open(srt_path, "r", encoding="utf-8") as f:
+                srt_content = f.read()
+            os.remove(srt_path)  # 清理临时 srt 文件
+            return _parse_srt_text(srt_content)
+        # 回退：尝试从 stdout 解析
+        if result.stdout.strip():
+            return _parse_srt_text(result.stdout.strip())
+        return None
     except subprocess.TimeoutExpired:
         print("     ⚠️ mlx-whisper 转录超时", file=sys.stderr)
     except Exception as e:
         print(f"     ⚠️ mlx-whisper 转录失败: {e}", file=sys.stderr)
     return None
+
+
+def _parse_srt_text(srt_content: str) -> str:
+    """从 srt 内容中提取纯文本（去除序号和时间戳）。"""
+    lines = srt_content.strip().splitlines()
+    text_lines = []
+    for line in lines:
+        line = line.strip()
+        # 跳过序号行（纯数字）
+        if re.match(r"^\d+$", line):
+            continue
+        # 跳过时间戳行
+        if re.match(r"\d{2}:\d{2}:\d{2}[.,]\d{3}\s*-->", line):
+            continue
+        if line:
+            text_lines.append(line)
+    # 去重连续重复行
+    deduped = []
+    prev = ""
+    for line in text_lines:
+        if line != prev:
+            deduped.append(line)
+            prev = line
+    return "\n".join(deduped)
 
 
 def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: str, channel: str, duration: int) -> dict:
@@ -125,15 +204,15 @@ def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: s
             "error": "音频下载失败",
         }
 
-    # 检查 mlx-whisper 是否可用
-    if not _check_mlx_whisper():
+    # 确保 mlx-whisper 可用（未安装则自动安装）
+    if not _ensure_mlx_whisper():
         _cleanup_audio(audio_path)
         return {
             "success": False,
             "video_id": video_id, "title": title, "channel": channel, "duration": duration,
             "subtitle_file": None, "subtitle_lang": None, "subtitle_type": None,
             "text_length": 0, "chunked": False, "chunk_files": [],
-            "error": "音频转录不可用。请运行: uv sync --project skills/yt-monitor --extra transcribe（仅 Apple Silicon Mac）",
+            "error": "mlx-whisper 自动安装失败，请检查 stderr 输出（仅 Apple Silicon Mac）",
         }
 
     transcript = _transcribe_mlx_whisper(audio_path)
@@ -178,15 +257,60 @@ def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: s
     }
 
 
+def _check_subtitles(url: str, lang: str) -> str | None:
+    """
+    用 yt-dlp --print JSON 检测字幕可用性。
+
+    Returns:
+        "manual" — 有手动字幕
+        "auto"   — 仅有自动生成字幕
+        "none"   — 确认无任何字幕
+        None     — 检测失败（应回退到逐步尝试）
+    """
+    cmd = [
+        "yt-dlp", "--skip-download",
+        "--print", '{"subs": %(subtitles)j, "auto_subs": %(automatic_captions)j}',
+        *YT_DLP_AUTH_ARGS,
+        url,
+    ]
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        if result.returncode != 0:
+            if result.stderr:
+                print(f"     ⚠️ 字幕检测 yt-dlp stderr: {result.stderr[:500]}", file=sys.stderr)
+            return None  # 检测失败，回退到逐步尝试
+
+        try:
+            sub_info = json.loads(result.stdout.strip().splitlines()[0])
+        except (json.JSONDecodeError, IndexError):
+            return None
+
+        langs_set = {l.strip() for l in lang.split(",")}
+
+        if any(k in langs_set for k in (sub_info.get("subs") or {})):
+            return "manual"
+        if any(k in langs_set for k in (sub_info.get("auto_subs") or {})):
+            return "auto"
+        return "none"
+    except subprocess.TimeoutExpired:
+        print("     ⚠️ 字幕检测超时", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"     ⚠️ 字幕检测失败: {e}", file=sys.stderr)
+        return None
+
+
 def get_video_info(url: str) -> dict:
     """获取视频基本信息（标题、频道、时长等）"""
     try:
         result = subprocess.run(
-            ["yt-dlp", "--dump-json", "--no-download", url],
+            ["yt-dlp", "--dump-json", "--no-download", *YT_DLP_AUTH_ARGS, url],
             capture_output=True, text=True, timeout=30,
         )
         if result.returncode == 0:
             return json.loads(result.stdout)
+        if result.stderr:
+            print(f"  ⚠️ yt-dlp stderr: {result.stderr[:500]}", file=sys.stderr)
     except Exception as e:
         print(f"  ⚠️ 获取视频信息失败: {e}", file=sys.stderr)
     return {}
@@ -226,11 +350,38 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
     video_id = _extract_video_id(url)
     output_template = os.path.join(output_dir, f"{video_id}")
 
-    # 策略1: 尝试下载手动字幕（同时获取视频信息）
-    subtitle_file, info = _try_download_sub(url, output_template, lang, auto=False, dump_json=True)
-    sub_type = "manual"
+    # 预检字幕可用性
+    sub_availability = _check_subtitles(url, lang)
 
-    # 从合并调用中提取视频信息
+    if sub_availability == "none":
+        # 确认无字幕 — 直接走音频转录
+        info = get_video_info(url)
+        video_id = info.get("id", video_id)
+        title = info.get("title", "unknown")
+        channel = info.get("channel", info.get("uploader", "unknown"))
+        duration = info.get("duration", 0)
+        print(f"  📹 {title}")
+        print(f"     频道: {channel} | 时长: {_format_duration(duration)}")
+        print("     ⚠️ 该视频无字幕，将使用音频转录", file=sys.stderr)
+        return _transcribe_with_fallback(url, output_dir, video_id, title, channel, duration)
+
+    # sub_availability 为 "manual"/"auto"（预检成功）或 None（预检失败，回退逐步尝试）
+    subtitle_file = None
+    info = {}
+    sub_type = sub_availability or "manual"
+
+    if sub_availability != "auto":
+        # 预检说有手动字幕，或预检失败先尝试手动
+        subtitle_file, info = _try_download_sub(url, output_template, lang, auto=False, dump_json=True)
+
+    if not subtitle_file:
+        # 手动字幕下载失败或仅有自动字幕
+        subtitle_file, auto_info = _try_download_sub(url, output_template, lang, auto=True, dump_json=not info)
+        sub_type = "auto"
+        if not info and auto_info:
+            info = auto_info
+
+    # 提取视频信息
     if info:
         video_id = info.get("id", video_id)
         title = info.get("title", "unknown")
@@ -244,20 +395,8 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
     print(f"  📹 {title}")
     print(f"     频道: {channel} | 时长: {_format_duration(duration)}")
 
-    # 策略2: 尝试下载自动生成字幕
     if not subtitle_file:
-        subtitle_file, auto_info = _try_download_sub(url, output_template, lang, auto=True, dump_json=not info)
-        sub_type = "auto"
-        # 如果第一次没拿到 info，用第二次的
-        if not info and auto_info:
-            info = auto_info
-            video_id = info.get("id", video_id)
-            title = info.get("title", title)
-            channel = info.get("channel", info.get("uploader", channel))
-            duration = info.get("duration", duration)
-
-    if not subtitle_file:
-        # 回退到音频转录
+        # 字幕下载失败，回退到音频转录
         print("     ⚠️ 没有找到字幕，尝试音频转录回退...", file=sys.stderr)
         return _transcribe_with_fallback(url, output_dir, video_id, title, channel, duration)
 
@@ -317,6 +456,7 @@ def _try_download_sub(url: str, output_template: str, lang: str, auto: bool, dum
         "--skip-download",
         "--sub-format", "vtt/srt/best",
         "--sub-lang", lang,
+        *YT_DLP_AUTH_ARGS,
         "-o", output_template,
     ]
     if dump_json:
@@ -330,6 +470,8 @@ def _try_download_sub(url: str, output_template: str, lang: str, auto: bool, dum
     info = {}
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        if result.returncode != 0 and result.stderr:
+            print(f"     ⚠️ yt-dlp stderr: {result.stderr[:500]}", file=sys.stderr)
         if dump_json and result.stdout.strip():
             try:
                 info = json.loads(result.stdout)

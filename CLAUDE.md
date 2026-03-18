@@ -59,7 +59,7 @@ X/Twitter 相关能力已合并到 `skills/x-toolkit/`：
 
 ### yt-monitor（Python）
 
-使用 `uv` 管理依赖（非 pip/poetry），核心依赖 `yt-dlp`，可选 `mlx-whisper`（Apple Silicon 转录）。运行时数据存放在 `~/.wqq-skills/yt-monitor/`。
+使用 `uv` 管理依赖（非 pip/poetry），核心依赖 `yt-dlp`，需要 `deno`（JS challenge）和 Chrome 登录 YouTube（cookie 认证）。`mlx-whisper` 对中文频道为必需品（首次使用时自动安装，仅 Apple Silicon）。运行时数据存放在 `~/.wqq-skills/yt-monitor/`。
 
 ### OpenSpec 工作流
 
