@@ -33,44 +33,41 @@ YT_DLP_AUTH_ARGS = ["--cookies-from-browser", "chrome", "--remote-components", "
 def _ensure_mlx_whisper() -> bool:
     """检测 mlx-whisper 是否可用，未安装则自动安装。"""
     project = str(SKILL_DIR)
-    try:
-        result = subprocess.run(
-            ["uv", "run", "--project", project, "python", "-c", "import mlx_whisper"],
-            capture_output=True, timeout=30,
-        )
-        if result.returncode == 0:
+
+    def _is_installed() -> bool:
+        try:
+            subprocess.run(
+                ["uv", "run", "--project", project, "python", "-c", "import mlx_whisper"],
+                capture_output=True, timeout=30, check=True,
+            )
             return True
-    except Exception:
-        pass
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            return False
+
+    if _is_installed():
+        return True
 
     # 未安装，自动安装
     print("     📦 mlx-whisper 未安装，正在自动安装（首次可能较慢）...", file=sys.stderr)
     try:
-        install = subprocess.run(
+        subprocess.run(
             ["uv", "sync", "--project", project, "--extra", "transcribe"],
-            capture_output=True, text=True, timeout=300,
+            capture_output=True, text=True, timeout=300, check=True,
         )
-        if install.returncode != 0:
-            print(f"     ⚠️ mlx-whisper 安装失败: {install.stderr[:500]}", file=sys.stderr)
-            return False
     except subprocess.TimeoutExpired:
         print("     ⚠️ mlx-whisper 安装超时", file=sys.stderr)
         return False
-    except Exception as e:
-        print(f"     ⚠️ mlx-whisper 安装失败: {e}", file=sys.stderr)
+    except subprocess.CalledProcessError as e:
+        print(f"     ⚠️ mlx-whisper 安装失败: {e.stderr[:500]}", file=sys.stderr)
+        return False
+    except FileNotFoundError:
+        print("     ⚠️ uv 命令未找到，请确保已安装", file=sys.stderr)
         return False
 
     # 安装后再次确认
-    try:
-        verify = subprocess.run(
-            ["uv", "run", "--project", project, "python", "-c", "import mlx_whisper"],
-            capture_output=True, timeout=30,
-        )
-        if verify.returncode == 0:
-            print("     ✅ mlx-whisper 安装成功", file=sys.stderr)
-            return True
-    except Exception:
-        pass
+    if _is_installed():
+        print("     ✅ mlx-whisper 安装成功", file=sys.stderr)
+        return True
 
     print("     ⚠️ mlx-whisper 安装后仍无法导入", file=sys.stderr)
     return False
@@ -261,7 +258,7 @@ def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: s
 
 def _check_subtitles(url: str, lang: str) -> str | None:
     """
-    用 yt-dlp --list-subs 检测字幕可用性。
+    用 yt-dlp --print JSON 检测字幕可用性。
 
     Returns:
         "manual" — 有手动字幕
@@ -270,7 +267,8 @@ def _check_subtitles(url: str, lang: str) -> str | None:
         None     — 检测失败（应回退到逐步尝试）
     """
     cmd = [
-        "yt-dlp", "--list-subs", "--skip-download",
+        "yt-dlp", "--skip-download",
+        "--print", '{"subs": %(subtitles)j, "auto_subs": %(automatic_captions)j}',
         *YT_DLP_AUTH_ARGS,
         url,
     ]
@@ -280,37 +278,19 @@ def _check_subtitles(url: str, lang: str) -> str | None:
             if result.stderr:
                 print(f"     ⚠️ 字幕检测 yt-dlp stderr: {result.stderr[:500]}", file=sys.stderr)
             return None  # 检测失败，回退到逐步尝试
-        output = result.stdout
-        # 解析 lang 列表中的语言
-        langs = [l.strip() for l in lang.split(",")]
-        has_manual = False
-        has_auto = False
-        in_manual = False
-        in_auto = False
-        for line in output.splitlines():
-            if "Available subtitles" in line:
-                in_manual = True
-                in_auto = False
-                continue
-            if "Available automatic captions" in line:
-                in_auto = True
-                in_manual = False
-                continue
-            if in_manual:
-                for l in langs:
-                    if line.strip().startswith(l):
-                        has_manual = True
-                        break
-            if in_auto:
-                for l in langs:
-                    if line.strip().startswith(l):
-                        has_auto = True
-                        break
-        if has_manual:
+
+        try:
+            sub_info = json.loads(result.stdout.strip().splitlines()[0])
+        except (json.JSONDecodeError, IndexError):
+            return None
+
+        langs_set = {l.strip() for l in lang.split(",")}
+
+        if any(k in langs_set for k in (sub_info.get("subs") or {})):
             return "manual"
-        if has_auto:
+        if any(k in langs_set for k in (sub_info.get("auto_subs") or {})):
             return "auto"
-        return "none"  # 检测成功，确认无字幕
+        return "none"
     except subprocess.TimeoutExpired:
         print("     ⚠️ 字幕检测超时", file=sys.stderr)
         return None
