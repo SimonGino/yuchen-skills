@@ -8,21 +8,25 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import re
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import concurrent.futures
 from datetime import datetime, timezone
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
+from state import load_state, save_state, mark_video, get_videos_by_status, DATA_DIR
+from preflight import run_preflight
 
 # 项目根目录
 SKILL_DIR = Path(__file__).parent.parent
 
-# 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
-DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
+# CONFIG_PATH uses DATA_DIR imported from state
 CONFIG_PATH = DATA_DIR / "channels.json"
-PROCESSED_PATH = DATA_DIR / "processed.json"
 
 # 仓库内的示例配置（用于首次初始化）
 EXAMPLE_CONFIG_PATH = SKILL_DIR / "config" / "channels.example.json"
@@ -34,6 +38,71 @@ RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}
 ATOM_NS = "http://www.w3.org/2005/Atom"
 YT_NS = "http://www.youtube.com/xml/schemas/2015"
 MEDIA_NS = "http://search.yahoo.com/mrss/"
+
+
+# ── Enrichment helpers ────────────────────────────────────────────────────
+
+# yt-dlp auth args (same as yt_subtitle_dl.py)
+YT_DLP_AUTH_ARGS = ["--cookies-from-browser", "chrome", "--remote-components", "ejs:github"]
+
+
+def format_relative_time(timestamp: str) -> str:
+    """
+    Convert ISO timestamp to Chinese relative time string.
+    Rules: <1min='刚刚', <1h='N分钟前', <24h='N小时前', <7d='N天前', else date.
+    Future timestamps (clock skew) treated as '刚刚'.
+    """
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        diff = now - dt
+        seconds = diff.total_seconds()
+        if seconds < 0 or seconds < 60:
+            return "刚刚"
+        minutes = int(seconds // 60)
+        if minutes < 60:
+            return f"{minutes}分钟前"
+        hours = int(seconds // 3600)
+        if hours < 24:
+            return f"{hours}小时前"
+        days = int(seconds // 86400)
+        if days < 7:
+            return f"{days}天前"
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, AttributeError):
+        return timestamp
+
+
+def format_duration_display(seconds: int) -> str:
+    """Format seconds as M:SS or H:MM:SS."""
+    if not seconds:
+        return "未知"
+    h, r = divmod(seconds, 3600)
+    m, s = divmod(r, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def enrich_video_duration(video_id: str) -> tuple[str | None, int | None]:
+    """
+    Fetch video duration via yt-dlp --dump-json.
+    Returns (formatted_duration, duration_seconds) or (None, None) on failure.
+    """
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--dump-json", "--no-download", *YT_DLP_AUTH_ARGS, url],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            info = json.loads(result.stdout)
+            dur = info.get("duration")
+            if dur:
+                return format_duration_display(int(dur)), int(dur)
+    except Exception as e:
+        print(f"  ⚠️ 获取视频时长失败 ({video_id}): {e}", file=sys.stderr)
+    return None, None
 
 
 def _ensure_config():
@@ -66,21 +135,6 @@ def save_config(config: dict):
     """保存频道配置"""
     with open(CONFIG_PATH, "w", encoding="utf-8") as f:
         json.dump(config, f, ensure_ascii=False, indent=2)
-
-
-def load_processed() -> dict:
-    """加载已处理的视频记录"""
-    PROCESSED_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not PROCESSED_PATH.exists():
-        return {"processed_videos": {}}
-    with open(PROCESSED_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def save_processed(processed: dict):
-    """保存已处理的视频记录"""
-    with open(PROCESSED_PATH, "w", encoding="utf-8") as f:
-        json.dump(processed, f, ensure_ascii=False, indent=2)
 
 
 def fetch_url(url: str, timeout: int = 15) -> str:
@@ -213,23 +267,27 @@ def fetch_channel_feed(channel_id: str) -> list[dict]:
     return videos
 
 
-def check_new_videos(days: int = 7, channel_filter: str = None) -> list[dict]:
-    """
-    检查所有频道的新视频。
-
-    Args:
-        days: 检查最近几天的视频（默认7天）
-        channel_filter: 按频道名称过滤（子字符串匹配，大小写不敏感）
-
-    Returns:
-        新视频列表 [{video_id, title, url, published, channel_name}]
-    """
+def check_new_videos(days: int = 7, channel_filter: str | None = None,
+                     enrich: bool = False, resume: bool = False) -> list[dict]:
     config = load_config()
-    processed = load_processed()
-    processed_ids = set(processed.get("processed_videos", {}).keys())
+    state = load_state()
+    known_ids = set(state.get("videos", {}).keys())
+
+    if resume:
+        by_status = get_videos_by_status(state)
+        videos = by_status.get("downloaded", [])
+        for v in videos:
+            v.setdefault("url", f"https://www.youtube.com/watch?v={v['video_id']}")
+            v.setdefault("published", v.get("downloaded_at", ""))
+            v.setdefault("published_relative", format_relative_time(v.get("downloaded_at", "")))
+            v.setdefault("description_snippet", "")
+            v.setdefault("duration", None)
+            v.setdefault("duration_seconds", None)
+        if enrich:
+            videos = _enrich_durations(videos)
+        return videos
 
     all_new_videos = []
-
     channels = config.get("channels", [])
     if channel_filter:
         filter_lower = channel_filter.lower()
@@ -241,16 +299,13 @@ def check_new_videos(days: int = 7, channel_filter: str = None) -> list[dict]:
     for channel in channels:
         name = channel.get("name", "未知频道")
         channel_id = channel.get("channel_id", "")
-
         print(f"\n📺 检查频道: {name}", file=sys.stderr)
 
-        # 如果没有 channel_id，尝试解析
         if not channel_id:
             url = channel.get("url", "")
             if not url:
                 print(f"  [跳过] 没有频道 URL", file=sys.stderr)
                 continue
-
             print(f"  正在解析 channel_id...", file=sys.stderr)
             channel_id = resolve_channel_id(url)
             if channel_id:
@@ -261,23 +316,24 @@ def check_new_videos(days: int = 7, channel_filter: str = None) -> list[dict]:
                 print(f"  [错误] 无法解析 channel_id", file=sys.stderr)
                 continue
 
-        # 获取 RSS Feed
         videos = fetch_channel_feed(channel_id)
         print(f"  获取到 {len(videos)} 个视频", file=sys.stderr)
 
-        # 过滤新视频
         cutoff = datetime.now(timezone.utc).timestamp() - (days * 86400)
         new_videos = []
         for v in videos:
-            if v["video_id"] in processed_ids:
+            if v["video_id"] in known_ids:
                 continue
-            # 检查发布时间
             try:
                 pub_dt = datetime.fromisoformat(v["published"].replace("Z", "+00:00"))
                 if pub_dt.timestamp() < cutoff:
                     continue
             except (ValueError, AttributeError):
-                pass  # 无法解析时间，仍然包含
+                pass
+            v["published_relative"] = format_relative_time(v.get("published", ""))
+            v["description_snippet"] = v.pop("description", "")
+            v["duration"] = None
+            v["duration_seconds"] = None
             new_videos.append(v)
 
         if new_videos:
@@ -285,25 +341,31 @@ def check_new_videos(days: int = 7, channel_filter: str = None) -> list[dict]:
             for v in new_videos:
                 print(f"     - {v['title']}", file=sys.stderr)
                 print(f"       {v['url']}", file=sys.stderr)
-                print(f"       发布时间: {v['published']}", file=sys.stderr)
+                print(f"       发布时间: {v.get('published_relative', v['published'])}", file=sys.stderr)
         else:
             print(f"  没有新视频", file=sys.stderr)
-
         all_new_videos.extend(new_videos)
 
+    if enrich and all_new_videos:
+        all_new_videos = _enrich_durations(all_new_videos)
     return all_new_videos
 
 
-def mark_as_processed(videos: list[dict]):
-    """将视频标记为已处理"""
-    processed = load_processed()
-    for v in videos:
-        processed["processed_videos"][v["video_id"]] = {
-            "title": v["title"],
-            "channel": v.get("channel_name", ""),
-            "imported_at": datetime.now(timezone.utc).isoformat(),
-        }
-    save_processed(processed)
+def _enrich_durations(videos: list[dict]) -> list[dict]:
+    if not videos:
+        return videos
+    print(f"  ⏱️ 正在获取视频时长 ({len(videos)} 个)...", file=sys.stderr)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = {executor.submit(enrich_video_duration, v["video_id"]): v for v in videos}
+        for future in concurrent.futures.as_completed(futures):
+            v = futures[future]
+            try:
+                dur, dur_s = future.result()
+                v["duration"] = dur
+                v["duration_seconds"] = dur_s
+            except Exception:
+                pass
+    return videos
 
 
 def add_channel(name: str, url: str):
@@ -363,50 +425,68 @@ def main():
     parser = argparse.ArgumentParser(description="YouTube 频道 RSS 监控")
     subparsers = parser.add_subparsers(dest="command", help="可用命令")
 
-    # check 命令
+    subparsers.add_parser("preflight", help="检查依赖是否就绪")
+
     check_parser = subparsers.add_parser("check", help="检查频道新视频")
     check_parser.add_argument("--days", type=int, default=7, help="检查最近几天（默认7天）")
     check_parser.add_argument("--json", action="store_true", help="以 JSON 格式输出")
-    check_parser.add_argument("--channel", type=str, default=None, help="按频道名称过滤（子字符串匹配）")
+    check_parser.add_argument("--channel", type=str, default=None, help="按频道名称过滤")
+    check_parser.add_argument("--enrich", action="store_true", help="获取视频时长（较慢）")
+    check_parser.add_argument("--resume", action="store_true", help="列出已下载但未总结的视频")
 
-    # add 命令
     add_parser = subparsers.add_parser("add", help="添加监控频道")
     add_parser.add_argument("name", help="频道名称")
     add_parser.add_argument("url", help="频道 URL")
 
-    # list 命令
     subparsers.add_parser("list", help="列出所有监控频道")
 
-    # mark 命令
-    mark_parser = subparsers.add_parser("mark", help="标记视频为已处理")
+    mark_parser = subparsers.add_parser("mark", help="标记视频状态")
     mark_parser.add_argument("video_ids", nargs="+", help="视频 ID 列表")
+    mark_parser.add_argument("--status", default="summarized",
+                             choices=["downloaded", "summarized", "published"],
+                             help="目标状态（默认 summarized）")
+    mark_parser.add_argument("--title", default=None, help="视频标题")
+    mark_parser.add_argument("--channel", default=None, help="频道名称")
+
+    subparsers.add_parser("status", help="查看视频处理状态")
 
     args = parser.parse_args()
 
-    if args.command == "check":
-        new_videos = check_new_videos(days=args.days, channel_filter=args.channel)
+    if args.command == "preflight":
+        result = run_preflight()
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    elif args.command == "check":
+        new_videos = check_new_videos(days=args.days, channel_filter=args.channel,
+                                       enrich=args.enrich, resume=args.resume)
         if args.json:
             print(json.dumps(new_videos, ensure_ascii=False, indent=2))
         elif not new_videos:
-            print(f"\n✅ 所有频道均无新视频更新")
+            if args.resume:
+                print(f"\n✅ 没有待总结的视频")
+            else:
+                print(f"\n✅ 所有频道均无新视频更新")
         else:
-            print(f"\n📊 共发现 {len(new_videos)} 个新视频")
+            if args.resume:
+                print(f"\n📋 有 {len(new_videos)} 个视频待总结")
+            else:
+                print(f"\n📊 共发现 {len(new_videos)} 个新视频")
     elif args.command == "add":
         add_channel(args.name, args.url)
     elif args.command == "list":
         list_channels()
     elif args.command == "mark":
-        processed = load_processed()
+        state = load_state()
         for vid in args.video_ids:
-            processed["processed_videos"][vid] = {
-                "title": "",
-                "channel": "",
-                "imported_at": datetime.now(timezone.utc).isoformat(),
-            }
-        save_processed(processed)
-        print(f"✅ 已标记 {len(args.video_ids)} 个视频为已处理")
+            mark_video(state, vid, status=args.status,
+                       title=args.title, channel=args.channel)
+        save_state(state)
+        status_label = {"downloaded": "已下载", "summarized": "已总结", "published": "已发布"}
+        print(f"✅ 已标记 {len(args.video_ids)} 个视频为{status_label.get(args.status, args.status)}")
+    elif args.command == "status":
+        state = load_state()
+        result = get_videos_by_status(state)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        # 默认：检查新视频
         new_videos = check_new_videos()
         if not new_videos:
             print(f"\n✅ 所有频道均无新视频更新")

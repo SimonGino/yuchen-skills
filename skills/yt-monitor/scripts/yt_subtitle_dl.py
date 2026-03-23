@@ -18,8 +18,9 @@ from pathlib import Path
 
 SKILL_DIR = Path(__file__).parent.parent
 
-# 运行时数据存放在 ~/.wqq-skills/yt-monitor/，避免污染代码目录
-DATA_DIR = Path.home() / ".wqq-skills" / "yt-monitor"
+sys.path.insert(0, str(Path(__file__).parent))
+from state import load_state, save_state, mark_video, DATA_DIR
+
 SUBTITLE_DIR = DATA_DIR / "subtitles"
 # 字幕分块阈值（字符数）
 CHUNK_THRESHOLD = 15000
@@ -248,6 +249,14 @@ def _transcribe_with_fallback(url: str, output_dir: str, video_id: str, title: s
     print(f"     ✅ 转录已保存: {text_file}", file=sys.stderr)
     print(f"     来源: mlx-whisper | 字符数: {text_length}", file=sys.stderr)
 
+    # Auto-mark as downloaded in state
+    try:
+        _state = load_state()
+        mark_video(_state, video_id, status="downloaded", title=title, channel=channel)
+        save_state(_state)
+    except Exception as e:
+        print(f"     ⚠️ 状态标记失败: {e}", file=sys.stderr)
+
     return {
         "success": True,
         "video_id": video_id, "title": title, "channel": channel, "duration": duration,
@@ -418,6 +427,14 @@ def download_subtitle(url: str, lang: str = "zh,zh-Hans,zh-CN,zh-TW,zh-Hant,en",
 
     print(f"     ✅ 字幕已保存: {text_file}")
     print(f"     语言: {sub_lang} | 类型: {'手动' if sub_type == 'manual' else '自动生成'} | 字符数: {text_length}")
+
+    # Auto-mark as downloaded in state
+    try:
+        _state = load_state()
+        mark_video(_state, video_id, status="downloaded", title=title, channel=channel)
+        save_state(_state)
+    except Exception as e:
+        print(f"     ⚠️ 状态标记失败: {e}", file=sys.stderr)
 
     return {
         "success": True,
