@@ -6,3 +6,8 @@ dependencies = ["yt-dlp"]
 
 [project.optional-dependencies]
 transcribe = ["mlx-whisper"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
