@@ -24,7 +24,9 @@ skills/yt-monitor/
 ├── SKILL.md
 ├── scripts/
 │   ├── yt_rss_monitor.py        ← YouTube RSS 监控（无需 API Key）
-│   └── yt_subtitle_dl.py        ← 字幕下载（yt-dlp，Python 实现）
+│   ├── yt_subtitle_dl.py        ← 字幕下载（yt-dlp，Python 实现）
+│   ├── state.py                 ← 状态管理共享模块（processed.json 读写）
+│   └── preflight.py             ← 依赖检查模块
 └── config/
     └── channels.example.json    ← 频道配置示例
 
@@ -35,6 +37,18 @@ skills/yt-monitor/
 ```
 
 > 注：本 skill 使用 Python 而非 TypeScript，因为依赖 yt-dlp CLI 和可选的 mlx-whisper 本地模型。
+
+## 依赖检查（所有工作流的第零步）
+
+每次执行任何工作流之前，先运行依赖检查：
+
+```bash
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py preflight
+```
+
+- 如果 `all_ok: true`：继续执行工作流
+- 如果 `all_ok: false`：使用 **AskUserQuestion** 列出缺失的依赖和安装命令，询问用户是否自动安装。用户确认后执行对应的 `install_cmd`
+- mlx-whisper 标记为可选（`required: false`），缺失不阻塞主流程
 
 ## 使用方式
 
@@ -57,13 +71,13 @@ skills/yt-monitor/
 **第一步：执行检查**
 
 ```bash
-# 检查全部频道：
-uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7
+# 检查全部频道（含时长）：
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --enrich
 # 检查指定频道：
-uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --channel 老李
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --enrich --channel 老李
 ```
 
-向用户报告新视频列表（标题、链接、发布时间）。`--channel` 支持模糊匹配（子字符串，大小写不敏感）。
+向用户报告新视频列表（标题、链接、发布时间）。`--channel` 支持模糊匹配（子字符串，大小写不敏感）。展示视频列表时包含时长、发布相对时间、描述摘要。
 
 ---
 
@@ -73,12 +87,12 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monit
 
 **第一步：检查新视频**
 ```bash
-uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --enrich
 # 或只查某个频道：
-uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --channel 老李
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --days 7 --json --enrich --channel 老李
 ```
 
-注意：`--json` 模式下日志输出到 stderr，stdout 只有纯 JSON。
+注意：`--json` 模式下日志输出到 stderr，stdout 只有纯 JSON。展示视频列表时包含时长、发布相对时间、描述摘要。
 
 > 频道选择逻辑同上「检查频道更新」章节：用户未指定频道且有多个频道时，先用 AskUserQuestion 让用户选择。
 
@@ -109,17 +123,38 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_
 - 如果 `chunked: false`：直接用 Read 工具读取 `.txt` 文件并总结
 - 如果 `chunked: true`：按顺序读取各 `_partN.txt` 文件，逐块总结后合并为最终总结。注意 `[上文重叠]` 标记的段落是上一块的结尾，用于保持上下文连贯，不要重复总结
 
-总结应包含：
-- 视频标题和频道
-- 核心观点（3-5 个要点）
-- 关键数据或论据
-- 总结（2-3 句话概括全片）
+总结应使用以下模板（**始终使用简体中文**）：
+
+## 视频摘要：{标题}
+频道：{频道名} | 时长：{时长} | 发布：{相对时间}
+
+### 核心观点
+- （3-5 个要点）
+
+### 关键数据/论据
+- （重要数字、引用、实验结果等）
+
+### 行动项
+- （可执行的建议、操作步骤）
+- 仅在视频确实给出可执行建议时填写，否则省略此 section
+
+### 提到的工具/资源
+- 工具名 — 简要说明 — 链接（如有）
+- 仅在视频提到了具体工具、产品或资源时填写
+
+### 标签
+#标签1 #标签2 #标签3（3-5个中文分类标签，聚焦主题领域）
+
+### 总结
+（2-3 句话概括核心内容和价值）
 
 **第四步：标记已处理**
 总结完成后，用 mark 命令标记视频（传入 video_id）：
 ```bash
-uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ... --status summarized
 ```
+
+字幕下载时已自动标记为 `downloaded`，总结完成后标记为 `summarized`。
 
 ---
 
@@ -170,11 +205,33 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monit
 
 ---
 
-### 「标记视频为已处理」
+### 「标记视频状态」
 
 ```bash
+# 标记为已总结（默认）：
 uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID1 VIDEO_ID2 ...
+# 指定状态：
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py mark VIDEO_ID --status published
 ```
+
+注意：字幕下载成功后会自动标记为 `downloaded`，Claude 完成总结后应调用 `mark --status summarized`。
+
+---
+
+### 「查看处理状态」
+
+```bash
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py status
+```
+
+---
+
+### 「继续未完成的总结」
+
+```bash
+uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monitor.py check --resume --enrich
+```
+列出已下载字幕但尚未总结的视频，方便断点续做。
 
 ---
 
@@ -200,7 +257,7 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_rss_monit
 2. `yt_rss_monitor.py check --json` → 获取新视频列表；若多个新视频 → AskUserQuestion 选择要总结的视频
 3. `yt_subtitle_dl.py download URL1 URL2 ...` → 下载用户选择的视频字幕
 4. 读取字幕文本 → Claude 生成总结
-5. `yt_rss_monitor.py mark VIDEO_ID1 ...` → 标记已处理，避免下次重复
+5. `yt_rss_monitor.py mark VIDEO_ID1 ... --status summarized` → 标记已总结
 
 ## 故障处理
 
