@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import re
 import urllib.request
 import urllib.error
 import xml.etree.ElementTree as ET
+import concurrent.futures
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -34,6 +36,71 @@ RSS_FEED_URL = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}
 ATOM_NS = "http://www.w3.org/2005/Atom"
 YT_NS = "http://www.youtube.com/xml/schemas/2015"
 MEDIA_NS = "http://search.yahoo.com/mrss/"
+
+
+# ── Enrichment helpers ────────────────────────────────────────────────────
+
+# yt-dlp auth args (same as yt_subtitle_dl.py)
+YT_DLP_AUTH_ARGS = ["--cookies-from-browser", "chrome", "--remote-components", "ejs:github"]
+
+
+def format_relative_time(timestamp: str) -> str:
+    """
+    Convert ISO timestamp to Chinese relative time string.
+    Rules: <1min='刚刚', <1h='N分钟前', <24h='N小时前', <7d='N天前', else date.
+    Future timestamps (clock skew) treated as '刚刚'.
+    """
+    try:
+        dt = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        now = datetime.now(timezone.utc)
+        diff = now - dt
+        seconds = diff.total_seconds()
+        if seconds < 0 or seconds < 60:
+            return "刚刚"
+        minutes = int(seconds // 60)
+        if minutes < 60:
+            return f"{minutes}分钟前"
+        hours = int(seconds // 3600)
+        if hours < 24:
+            return f"{hours}小时前"
+        days = int(seconds // 86400)
+        if days < 7:
+            return f"{days}天前"
+        return dt.strftime("%Y-%m-%d")
+    except (ValueError, AttributeError):
+        return timestamp
+
+
+def format_duration_display(seconds: int) -> str:
+    """Format seconds as M:SS or H:MM:SS."""
+    if not seconds:
+        return "未知"
+    h, r = divmod(seconds, 3600)
+    m, s = divmod(r, 60)
+    if h > 0:
+        return f"{h}:{m:02d}:{s:02d}"
+    return f"{m}:{s:02d}"
+
+
+def enrich_video_duration(video_id: str) -> tuple[str | None, int | None]:
+    """
+    Fetch video duration via yt-dlp --dump-json.
+    Returns (formatted_duration, duration_seconds) or (None, None) on failure.
+    """
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    try:
+        result = subprocess.run(
+            ["yt-dlp", "--dump-json", "--no-download", *YT_DLP_AUTH_ARGS, url],
+            capture_output=True, text=True, timeout=30,
+        )
+        if result.returncode == 0:
+            info = json.loads(result.stdout)
+            dur = info.get("duration")
+            if dur:
+                return format_duration_display(int(dur)), int(dur)
+    except Exception as e:
+        print(f"  ⚠️ 获取视频时长失败 ({video_id}): {e}", file=sys.stderr)
+    return None, None
 
 
 def _ensure_config():
