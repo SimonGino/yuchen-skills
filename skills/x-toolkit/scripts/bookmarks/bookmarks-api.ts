@@ -85,9 +85,10 @@ async function fetchBookmarksPageOnce(params: FetchBookmarksPageParams): Promise
   const html = await fetchHomeHtml(userAgent);
   const queryInfo = await fetchBookmarksQueryInfo(html, userAgent);
 
-  const features = buildFeatureMap(html, queryInfo.featureSwitches, {
+  const features = {
+    ...buildFeatureMap(html, queryInfo.featureSwitches),
     graphql_timeline_v2_bookmark_timeline: true,
-  });
+  };
   const fieldToggles = buildFieldToggleMap(queryInfo.fieldToggles);
 
   const url = new URL(`https://x.com/i/api/graphql/${queryInfo.queryId}/${queryInfo.operationName}`);
