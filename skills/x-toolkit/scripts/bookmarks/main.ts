@@ -13,25 +13,26 @@ import {
   findExistingTweetMarkdownPath,
   resolveTweetOutputPath,
   shouldSkipTweetOutput,
+  tweetIdToEpochMs,
 } from "../common/output";
+import { writeManifest } from "../common/manifest";
 import { fetchBookmarksPage } from "./bookmarks-api";
 import { extractBookmarkPageDetails } from "./bookmarks-parser";
 import { loadExportState, saveExportState, isExported, addExportedId } from "./state";
-import { writeBookmarkSummary } from "./summary";
-import type { BookmarkExportArgs, BookmarkTweet, ExportSummary } from "../types";
+import type { BookmarkExportArgs, BookmarkTweet, ExportSummary, ManifestEntry, ManifestFile } from "../types";
 import type { XCookieMap } from "../common/x-types";
 
 const USAGE = `Usage:
-  npx -y bun skills/x-toolkit/scripts/bookmarks/main.ts [--limit <n>] [--all] [--output <dir>] [--no-download-media] [--with-summary]`;
+  npx -y bun skills/x-toolkit/scripts/bookmarks/main.ts [--limit <n>] [--all] [--since YYYY-MM-DD] [--output <dir>] [--no-download-media]`;
 
 export const parseExportArgs = createArgParser<BookmarkExportArgs>(
   {
     mode: "bookmarks",
     limit: 50,
     all: false,
-    outputDir: path.resolve(getXOutputBaseDir(), "wqq-x-bookmarks-output"),
+    outputDir: path.resolve(getXOutputBaseDir(), "x-toolkit-output"),
     downloadMedia: true,
-    withSummary: false,
+    since: undefined,
   },
   new Map([
     ["--limit", (args, argv, i) => {
@@ -51,9 +52,13 @@ export const parseExportArgs = createArgParser<BookmarkExportArgs>(
       args.downloadMedia = false;
       return { nextIndex: i };
     }],
-    ["--with-summary", (args, _argv, i) => {
-      args.withSummary = true;
-      return { nextIndex: i };
+    ["--since", (args, argv, i) => {
+      const value = takeOne(argv, i, "--since");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+        throw new Error("--since must be YYYY-MM-DD format");
+      }
+      args.since = value;
+      return { nextIndex: i + 1 };
     }],
   ]),
   { usage: USAGE },
@@ -64,6 +69,7 @@ async function collectBookmarkTweets(
   limit: number,
   log: (message: string) => void,
   startCursor?: string,
+  sinceMs?: number,
 ): Promise<{ tweetIds: string[]; tweetsById: Record<string, BookmarkTweet>; lastCursor: string | null }> {
   const tweetIds: string[] = [];
   const tweetsById: Record<string, BookmarkTweet> = {};
@@ -72,6 +78,7 @@ async function collectBookmarkTweets(
   let cursor: string | undefined = startCursor;
   let lastCursor: string | null = null;
   let pageNum = 0;
+  let hitDateBoundary = false;
 
   while (tweetIds.length < limit) {
     if (pageNum > 0) {
@@ -94,11 +101,25 @@ async function collectBookmarkTweets(
       if (seenIds.has(tweetId)) {
         continue;
       }
+
+      if (sinceMs !== undefined) {
+        const epochMs = tweetIdToEpochMs(tweetId);
+        if (epochMs !== null && epochMs < sinceMs) {
+          log(`[bookmarks-export] hit date boundary at tweet ${tweetId}`);
+          hitDateBoundary = true;
+          break;
+        }
+      }
+
       seenIds.add(tweetId);
       tweetIds.push(tweetId);
       if (tweetIds.length >= limit) {
         break;
       }
+    }
+
+    if (hitDateBoundary) {
+      break;
     }
 
     if (!page.nextCursor || seenCursors.has(page.nextCursor)) {
@@ -190,9 +211,14 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
   const state = await loadExportState(args.outputDir);
   const startCursor = args.all ? (state.lastCursor ?? undefined) : undefined;
 
+  const sinceMs = args.since
+    ? new Date(args.since + "T00:00:00Z").getTime()
+    : undefined;
+
   const limitLabel = args.all ? "all" : String(args.limit);
-  log(`[bookmarks-export] collecting ${limitLabel} bookmarks`);
-  const collected = await collectBookmarkTweets(cookieMap, args.limit, log, startCursor);
+  const sinceLabel = args.since ? ` since ${args.since}` : "";
+  log(`[bookmarks-export] collecting ${limitLabel} bookmarks${sinceLabel}`);
+  const collected = await collectBookmarkTweets(cookieMap, args.limit, log, startCursor, sinceMs);
   log(`[bookmarks-export] collected ${collected.tweetIds.length} tweet ids`);
 
   if (collected.lastCursor) {
@@ -200,7 +226,9 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
   }
 
   const summary: ExportSummary = { success: 0, skipped: 0, failed: 0 };
-  const summarySources: Array<{ tweetId: string; markdownPath: string }> = [];
+  const manifestNewFiles: ManifestEntry[] = [];
+  const manifestSkipped: string[] = [];
+  const manifestFailed: string[] = [];
   let consecutiveFailures = 0;
 
   for (let idx = 0; idx < collected.tweetIds.length; idx++) {
@@ -209,12 +237,7 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
     if (isExported(state, tweetId)) {
       log(`[bookmarks-export] skipped (state): ${tweetId}`);
       summary.skipped += 1;
-      if (args.withSummary) {
-        const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
-        if (existingPath) {
-          summarySources.push({ tweetId, markdownPath: existingPath });
-        }
-      }
+      manifestSkipped.push(tweetId);
       continue;
     }
 
@@ -224,7 +247,7 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
       addExportedId(state, tweetId);
       await saveExportState(args.outputDir, state);
       summary.skipped += 1;
-      summarySources.push({ tweetId, markdownPath: existingPath });
+      manifestSkipped.push(tweetId);
       continue;
     }
 
@@ -247,6 +270,7 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
 
     if (result.status === "failed") {
       consecutiveFailures++;
+      manifestFailed.push(tweetId);
     } else {
       consecutiveFailures = 0;
     }
@@ -255,10 +279,14 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
       addExportedId(state, tweetId);
       state.lastRunAt = new Date().toISOString();
       await saveExportState(args.outputDir, state);
-    }
 
-    if (result.markdownPath) {
-      summarySources.push({ tweetId, markdownPath: result.markdownPath });
+      if (result.markdownPath) {
+        manifestNewFiles.push({
+          tweetId,
+          path: path.relative(args.outputDir, result.markdownPath),
+          author: collected.tweetsById[tweetId]?.username ?? "unknown",
+        });
+      }
     }
 
     const total = collected.tweetIds.length;
@@ -266,14 +294,14 @@ export async function runBookmarksExport(argv: string[]): Promise<ExportSummary>
     log(`[bookmarks-export] progress: ${done}/${total}`);
   }
 
-  if (args.withSummary) {
-    const summaryPath = await writeBookmarkSummary(args.outputDir, summarySources, log);
-    if (summaryPath) {
-      log(`[bookmarks-export] summary: ${summaryPath}`);
-    } else {
-      log("[bookmarks-export] summary: skipped (no readable markdown files)");
-    }
-  }
+  const manifest: ManifestFile = {
+    exportedAt: new Date().toISOString(),
+    source: "bookmarks",
+    newFiles: manifestNewFiles,
+    skipped: manifestSkipped,
+    failed: manifestFailed,
+  };
+  await writeManifest(args.outputDir, manifest);
 
   state.lastRunAt = new Date().toISOString();
   await saveExportState(args.outputDir, state);

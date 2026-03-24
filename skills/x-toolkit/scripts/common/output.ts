@@ -38,7 +38,18 @@ function buildTimestampPrefixFromTweetId(tweetId: string): string {
   }
 }
 
-function extractFrontMatterField(markdown: string, key: string): string | null {
+export function tweetIdToEpochMs(tweetId: string): number | null {
+  if (!/^\d+$/.test(tweetId)) return null;
+  try {
+    const snowflake = BigInt(tweetId);
+    const timestampMs = (snowflake >> 22n) + TWITTER_EPOCH_MS;
+    return Number(timestampMs);
+  } catch {
+    return null;
+  }
+}
+
+export function extractFrontMatterField(markdown: string, key: string): string | null {
   const frontMatterMatch = markdown.match(/^---\n([\s\S]*?)\n---/);
   if (!frontMatterMatch?.[1]) {
     return null;
