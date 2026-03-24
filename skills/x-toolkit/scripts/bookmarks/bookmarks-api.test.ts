@@ -1,18 +1,27 @@
 import { describe, expect, test } from "bun:test";
-import { extractBookmarksQueryInfo, resolveBookmarksApiChunkUrl } from "./bookmarks-api";
+import { extractBookmarksQueryInfo } from "./bookmarks-api";
 
 describe("extractBookmarksQueryInfo", () => {
-  test("extracts Bookmarks query id", () => {
-    const info = extractBookmarksQueryInfo("queryId:\"abc\",operationName:\"Bookmarks\"");
-    expect(info.queryId).toBe("abc");
+  test("extracts Bookmarks query id and operationName", () => {
+    const js = `queryId:"abc",operationName:"Bookmarks",metadata:{featureSwitches:["feat1"],fieldToggles:["tog1"]}`;
+    const info = extractBookmarksQueryInfo(js);
+    expect(info).not.toBeNull();
+    expect(info!.queryId).toBe("abc");
+    expect(info!.operationName).toBe("Bookmarks");
+    expect(info!.featureSwitches).toEqual(["feat1"]);
+    expect(info!.fieldToggles).toEqual(["tog1"]);
   });
-});
 
-describe("resolveBookmarksApiChunkUrl", () => {
-  test("falls back to shared bookmarks chunk", () => {
-    const html = "\"shared~bundle.BookmarkFolders~bundle.Bookmarks\":\"0fe48ba\"";
-    expect(resolveBookmarksApiChunkUrl(html)).toContain(
-      "shared~bundle.BookmarkFolders~bundle.Bookmarks.0fe48baa.js"
-    );
+  test("falls back to BookmarkFolderTimeline if Bookmarks not found", () => {
+    const js = `queryId:"xyz",operationName:"BookmarkFolderTimeline",metadata:{featureSwitches:[],fieldToggles:[]}`;
+    const info = extractBookmarksQueryInfo(js);
+    expect(info).not.toBeNull();
+    expect(info!.queryId).toBe("xyz");
+    expect(info!.operationName).toBe("BookmarkFolderTimeline");
+  });
+
+  test("returns null when no matching operation found", () => {
+    const info = extractBookmarksQueryInfo("some random js content");
+    expect(info).toBeNull();
   });
 });

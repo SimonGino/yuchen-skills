@@ -72,7 +72,11 @@ function walkEntry(entry: any, ids: Set<string>, tweetsById: Record<string, Book
 
 export function extractBookmarkPageDetails(payload: unknown): BookmarkPageDetails {
   const typed = payload as BookmarkTimelineResponse;
-  const instructions = typed?.data?.bookmark_timeline_v2?.timeline?.instructions;
+  // Support multiple response formats: bookmark_timeline (current), bookmark_timeline_v2 (legacy), and search_by_raw_query
+  const instructions =
+    typed?.data?.bookmark_timeline?.timeline?.instructions ??
+    typed?.data?.bookmark_timeline_v2?.timeline?.instructions ??
+    typed?.data?.search_by_raw_query?.bookmarks_search_timeline?.timeline?.instructions;
   if (!Array.isArray(instructions)) {
     return { tweetIds: [], nextCursor: null, tweetsById: {} };
   }

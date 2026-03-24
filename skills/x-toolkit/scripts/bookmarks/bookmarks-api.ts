@@ -1,4 +1,5 @@
-import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT } from "../common/constants";
+import { DEFAULT_BEARER_TOKEN, DEFAULT_USER_AGENT, FALLBACK_BOOKMARKS_QUERY_ID, FALLBACK_BOOKMARKS_FEATURE_SWITCHES, FALLBACK_BOOKMARKS_FIELD_TOGGLES } from "../common/constants";
+import { resolveMainChunkUrl } from "../common/graphql";
 import {
   buildFeatureMap,
   buildFieldToggleMap,
@@ -23,50 +24,57 @@ type FetchBookmarksPageParams = {
 
 type BookmarksQueryInfo = {
   queryId: string;
+  operationName: string;
   featureSwitches: string[];
   fieldToggles: string[];
 };
 
-function parseBookmarksApiHash(html: string): string {
-  return html.match(/api:\"([a-zA-Z0-9_-]+)\"/)?.[1] ?? html.match(/\"api\":\"([a-zA-Z0-9_-]+)\"/)?.[1] ?? "";
+/**
+ * Extract Bookmarks query info from main.js bundle.
+ * Tries "Bookmarks" first (lazy chunk may have been inlined), then falls back to "BookmarkFolderTimeline".
+ */
+export function extractBookmarksQueryInfo(mainJs: string): BookmarksQueryInfo | null {
+  // Try the classic Bookmarks endpoint first
+  for (const opName of ["Bookmarks", "BookmarkFolderTimeline"]) {
+    const queryMatch = mainJs.match(new RegExp(`queryId:"([^"]+)",operationName:"${opName}"`));
+    if (!queryMatch?.[1]) continue;
+
+    const modulePattern = new RegExp(
+      `queryId:"${queryMatch[1]}",operationName:"${opName}"[^}]*metadata:\\{featureSwitches:\\[([^\\]]*?)\\],fieldToggles:\\[([^\\]]*?)\\]`
+    );
+    const moduleMatch = mainJs.match(modulePattern);
+    const featureSwitches = moduleMatch?.[1] ? parseStringList(moduleMatch[1]) : [];
+    const fieldToggles = moduleMatch?.[2] ? parseStringList(moduleMatch[2]) : [];
+
+    return { queryId: queryMatch[1], operationName: opName, featureSwitches, fieldToggles };
+  }
+
+  return null;
 }
 
-export function resolveBookmarksApiChunkUrl(html: string): string {
-  const apiHash = parseBookmarksApiHash(html);
-  if (apiHash) {
-    return `https://abs.twimg.com/responsive-web/client-web/api.${apiHash}a.js`;
+/**
+ * Try multiple queryIds for the Bookmarks endpoint since X rotates them.
+ * The Bookmarks query is now in a lazy-loaded chunk, so we can't always extract it from main.js.
+ */
+async function fetchBookmarksQueryInfo(html: string, userAgent: string): Promise<BookmarksQueryInfo> {
+  // 1. Try to extract from main.js
+  const mainJsUrl = resolveMainChunkUrl(html);
+  if (mainJsUrl) {
+    try {
+      const mainJs = await fetchText(mainJsUrl, { headers: { "user-agent": userAgent } });
+      const info = extractBookmarksQueryInfo(mainJs);
+      if (info) return info;
+    } catch (err) {
+      console.log(`[bookmarks-api] main.js extraction failed, using fallback: ${err}`);
+    }
   }
 
-  const sharedHash = html.match(/\"shared~bundle\.BookmarkFolders~bundle\.Bookmarks\":\"([a-z0-9]+)\"/)?.[1];
-  if (sharedHash) {
-    return `https://abs.twimg.com/responsive-web/client-web/shared~bundle.BookmarkFolders~bundle.Bookmarks.${sharedHash}a.js`;
-  }
-
-  const bookmarksHash = html.match(/\"bundle\.Bookmarks\":\"([a-z0-9]+)\"/)?.[1];
-  if (bookmarksHash) {
-    return `https://abs.twimg.com/responsive-web/client-web/bundle.Bookmarks.${bookmarksHash}a.js`;
-  }
-
-  throw new Error("Bookmarks chunk hash not found");
-}
-
-export function extractBookmarksQueryInfo(apiChunk: string): BookmarksQueryInfo {
-  const queryMatch = apiChunk.match(/queryId:\"([^\"]+)\",operationName:\"Bookmarks\"/);
-  if (!queryMatch?.[1]) {
-    throw new Error("Bookmarks queryId not found");
-  }
-
-  const featureSwitches = parseStringList(
-    apiChunk.match(/operationName:\"Bookmarks\"[\s\S]*?featureSwitches:\[(.*?)\]/)?.[1],
-  );
-  const fieldToggles = parseStringList(
-    apiChunk.match(/operationName:\"Bookmarks\"[\s\S]*?fieldToggles:\[(.*?)\]/)?.[1],
-  );
-
+  // 2. Fallback: use known queryId
   return {
-    queryId: queryMatch[1],
-    featureSwitches,
-    fieldToggles,
+    queryId: FALLBACK_BOOKMARKS_QUERY_ID,
+    operationName: "Bookmarks",
+    featureSwitches: FALLBACK_BOOKMARKS_FEATURE_SWITCHES,
+    fieldToggles: FALLBACK_BOOKMARKS_FIELD_TOGGLES,
   };
 }
 
@@ -75,15 +83,14 @@ async function fetchBookmarksPageOnce(params: FetchBookmarksPageParams): Promise
   const bearerToken = params.bearerToken?.trim() || process.env.X_BEARER_TOKEN?.trim() || DEFAULT_BEARER_TOKEN;
 
   const html = await fetchHomeHtml(userAgent);
-  const chunkUrl = resolveBookmarksApiChunkUrl(html);
-  const apiChunk = await fetchText(chunkUrl, {
-    headers: { "user-agent": userAgent },
+  const queryInfo = await fetchBookmarksQueryInfo(html, userAgent);
+
+  const features = buildFeatureMap(html, queryInfo.featureSwitches, {
+    graphql_timeline_v2_bookmark_timeline: true,
   });
-  const queryInfo = extractBookmarksQueryInfo(apiChunk);
-  const features = buildFeatureMap(html, queryInfo.featureSwitches);
   const fieldToggles = buildFieldToggleMap(queryInfo.fieldToggles);
 
-  const url = new URL(`https://x.com/i/api/graphql/${queryInfo.queryId}/Bookmarks`);
+  const url = new URL(`https://x.com/i/api/graphql/${queryInfo.queryId}/${queryInfo.operationName}`);
   const variables: Record<string, unknown> = {
     count: params.count,
     includePromotedContent: false,
