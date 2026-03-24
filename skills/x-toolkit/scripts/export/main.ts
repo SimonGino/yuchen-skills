@@ -8,6 +8,7 @@ import { parseTweetId } from "../common/url-utils";
 import { createArgParser, takeOne, takeMany } from "../common/arg-parser";
 import {
   buildTweetOutputDirName,
+  extractFrontMatterField,
   findExistingTweetMarkdownPath,
   resolveTweetOutputPath,
   shouldSkipTweetOutput,
@@ -61,6 +62,7 @@ type SingleUrlResult = {
   status: "success" | "skipped" | "failed";
   tweetId: string | null;
   markdownPath: string | null;
+  author: string | null;
 };
 
 async function exportSingleUrl(
@@ -72,13 +74,13 @@ async function exportSingleUrl(
   const tweetId = parseTweetId(url);
   if (!tweetId) {
     log(`[x-to-md] failed: invalid tweet url (${url})`);
-    return { status: "failed", tweetId: null, markdownPath: null };
+    return { status: "failed", tweetId: null, markdownPath: null, author: null };
   }
 
   const existingPath = findExistingTweetMarkdownPath(args.outputDir, tweetId);
   if (shouldSkipTweetOutput(Boolean(existingPath))) {
     log(`[x-to-md] skipped: ${tweetId} (exists: ${existingPath})`);
-    return { status: "skipped", tweetId, markdownPath: existingPath };
+    return { status: "skipped", tweetId, markdownPath: existingPath, author: null };
   }
 
   try {
@@ -97,12 +99,13 @@ async function exportSingleUrl(
     }
 
     await writeFile(markdownPath, markdown, "utf8");
+    const author = extractFrontMatterField(markdown, "authorUsername");
     log(`[x-to-md] success: ${tweetId} -> ${markdownPath}`);
-    return { status: "success", tweetId, markdownPath };
+    return { status: "success", tweetId, markdownPath, author };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     log(`[x-to-md] failed: ${tweetId} (${message})`);
-    return { status: "failed", tweetId, markdownPath: null };
+    return { status: "failed", tweetId, markdownPath: null, author: null };
   }
 }
 
@@ -131,7 +134,7 @@ export async function runTweetExport(
       manifestNewFiles.push({
         tweetId: result.tweetId,
         path: path.relative(args.outputDir, result.markdownPath),
-        author: "unknown",
+        author: result.author ?? "unknown",
       });
     } else if (result.status === "skipped" && result.tweetId) {
       manifestSkipped.push(result.tweetId);

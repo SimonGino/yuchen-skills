@@ -73,7 +73,7 @@ npx -y bun skills/x-toolkit/scripts/main.ts --urls <url1> <url2> ...
 ```
 
 行为：
-- 支持 `x.com` / `twitter.com` status URL
+- 支持 `x.com` / `twitter.com` status URL 或直接提供 tweet ID
 - 已存在 `<tweetId>.md` 时自动 skip
 - 单条失败不中断整体
 
@@ -86,7 +86,7 @@ npx -y bun skills/x-toolkit/scripts/main.ts --mode debug --count 5 --save-raw
 ### 断点续传
 
 书签模式在 output 目录维护 `exported-ids.json`：
-- `--all` 模式下中断后重跑会自动跳过已导出内容
+- `--all` 模式下，中断后重跑会自动跳过已导出内容，并从上次中断的游标处继续
 - 遇到 429 限流会按响应头等待后重试
 - 若要完全重新导出，删除 `exported-ids.json`
 

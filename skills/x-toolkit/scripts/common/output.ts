@@ -49,7 +49,7 @@ export function tweetIdToEpochMs(tweetId: string): number | null {
   }
 }
 
-function extractFrontMatterField(markdown: string, key: string): string | null {
+export function extractFrontMatterField(markdown: string, key: string): string | null {
   const frontMatterMatch = markdown.match(/^---\n([\s\S]*?)\n---/);
   if (!frontMatterMatch?.[1]) {
     return null;
