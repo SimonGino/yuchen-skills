@@ -158,5 +158,13 @@ export type BookmarkTimelineResponse = {
     bookmark_timeline_v2?: {
       timeline?: { instructions?: TimelineInstruction[] };
     };
+    bookmark_timeline?: {
+      timeline?: { instructions?: TimelineInstruction[] };
+    };
+    search_by_raw_query?: {
+      bookmarks_search_timeline?: {
+        timeline?: { instructions?: TimelineInstruction[] };
+      };
+    };
   };
 };

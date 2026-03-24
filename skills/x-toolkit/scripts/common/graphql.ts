@@ -1,9 +1,9 @@
 import {
   DEFAULT_BEARER_TOKEN,
   DEFAULT_USER_AGENT,
-  FALLBACK_FEATURE_SWITCHES,
-  FALLBACK_FIELD_TOGGLES,
-  FALLBACK_QUERY_ID,
+  FALLBACK_ARTICLE_FEATURE_SWITCHES,
+  FALLBACK_ARTICLE_FIELD_TOGGLES,
+  FALLBACK_ARTICLE_QUERY_ID,
   FALLBACK_TWEET_DETAIL_FEATURE_DEFAULTS,
   FALLBACK_TWEET_DETAIL_FEATURE_SWITCHES,
   FALLBACK_TWEET_DETAIL_FIELD_TOGGLES,
@@ -141,9 +141,9 @@ async function resolveArticleQueryInfo(userAgent: string): Promise<ArticleQueryI
   const bundleMatch = html.match(/"bundle\\.TwitterArticles":"([a-z0-9]+)"/);
   if (!bundleMatch) {
     return {
-      queryId: FALLBACK_QUERY_ID,
-      featureSwitches: FALLBACK_FEATURE_SWITCHES,
-      fieldToggles: FALLBACK_FIELD_TOGGLES,
+      queryId: FALLBACK_ARTICLE_QUERY_ID,
+      featureSwitches: FALLBACK_ARTICLE_FEATURE_SWITCHES,
+      fieldToggles: FALLBACK_ARTICLE_FIELD_TOGGLES,
       html,
     };
   }
@@ -168,14 +168,14 @@ async function resolveArticleQueryInfo(userAgent: string): Promise<ArticleQueryI
   const fieldToggles = parseStringList(fieldToggleMatch?.[1]);
 
   return {
-    queryId: queryIdMatch?.[1] ?? FALLBACK_QUERY_ID,
-    featureSwitches: featureSwitches.length > 0 ? featureSwitches : FALLBACK_FEATURE_SWITCHES,
-    fieldToggles: fieldToggles.length > 0 ? fieldToggles : FALLBACK_FIELD_TOGGLES,
+    queryId: queryIdMatch?.[1] ?? FALLBACK_ARTICLE_QUERY_ID,
+    featureSwitches: featureSwitches.length > 0 ? featureSwitches : FALLBACK_ARTICLE_FEATURE_SWITCHES,
+    fieldToggles: fieldToggles.length > 0 ? fieldToggles : FALLBACK_ARTICLE_FIELD_TOGGLES,
     html,
   };
 }
 
-function resolveMainChunkUrl(html: string): string | null {
+export function resolveMainChunkUrl(html: string): string | null {
   const inlineUrl = html.match(
     /https:\/\/abs\.twimg\.com\/responsive-web\/client-web\/main\.[a-zA-Z0-9_-]+\.js/,
   )?.[0];
