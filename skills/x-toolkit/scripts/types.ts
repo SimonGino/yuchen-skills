@@ -9,7 +9,7 @@ export type BookmarkExportArgs = BaseExportArgs & {
   mode: "bookmarks";
   limit: number;
   all: boolean;
-  withSummary: boolean;
+  since?: string;
 };
 
 export type TweetExportArgs = BaseExportArgs & {
@@ -42,4 +42,20 @@ export type ExportState = {
   exportedIds: string[];
   lastCursor: string | null;
   lastRunAt: string;
+};
+
+export type ExportSource = "bookmarks" | "urls";
+
+export type ManifestEntry = {
+  tweetId: string;
+  path: string;
+  author: string;
+};
+
+export type ManifestFile = {
+  exportedAt: string;
+  source: ExportSource;
+  newFiles: ManifestEntry[];
+  skipped: string[];
+  failed: string[];
 };

@@ -8,7 +8,7 @@ describe("parseExportArgs", () => {
   test("uses defaults", () => {
     const args = parseExportArgs(["--urls", "https://x.com/a/status/1"]);
     expect(args.downloadMedia).toBe(true);
-    expect(args.outputDir.endsWith("wqq-x-to-md-output")).toBe(true);
+    expect(args.outputDir.endsWith("x-toolkit-output")).toBe(true);
     expect(args.urls).toEqual(["https://x.com/a/status/1"]);
   });
 
@@ -32,7 +32,7 @@ describe("parseExportArgs", () => {
 });
 
 describe("runExport", () => {
-  test("exports markdown with summary and writes per-tweet output", async () => {
+  test("exports markdown and writes per-tweet output", async () => {
     const outdir = await mkdtemp(path.join(tmpdir(), "x-to-md-"));
 
     const summary = await runExport(
@@ -45,7 +45,7 @@ authorUsername: "alice"
 
 # Hello thread
 
-English body with enough content to summarize.`,
+English body with enough content.`,
         localizeMarkdownMediaImpl: async (markdown) => ({
           markdown,
           downloadedImages: 0,
@@ -53,22 +53,22 @@ English body with enough content to summarize.`,
           imageDir: null,
           videoDir: null,
         }),
-        summarizeImpl: async (markdown) =>
-          markdown
-            .replace("\n---\n", '\nsummary: "测试摘要"\n---\n')
-            .replace("# Hello thread\n\n", "# Hello thread\n\n> 测试摘要\n\n"),
       },
     );
 
     expect(summary).toEqual({ success: 1, skipped: 0, failed: 0 });
 
-    const children = await readdir(outdir);
+    const children = (await readdir(outdir)).filter((c) => c !== "manifest.json");
     expect(children.length).toBe(1);
     const itemDir = path.join(outdir, children[0]!);
     const markdown = await readFile(path.join(itemDir, "123.md"), "utf8");
-    expect(markdown).toContain("测试摘要");
     expect(markdown).toContain("# Hello thread");
     expect(markdown).toContain("English body");
+
+    const manifest = JSON.parse(await readFile(path.join(outdir, "manifest.json"), "utf8"));
+    expect(manifest.source).toBe("urls");
+    expect(manifest.newFiles).toHaveLength(1);
+    expect(manifest.newFiles[0].tweetId).toBe("123");
   });
 
   test("skips when markdown already exists for tweet id", async () => {
@@ -90,5 +90,10 @@ English body with enough content to summarize.`,
 
     expect(summary).toEqual({ success: 0, skipped: 1, failed: 0 });
     expect(calls).toBe(0);
+
+    const manifest = JSON.parse(await readFile(path.join(outdir, "manifest.json"), "utf8"));
+    expect(manifest.source).toBe("urls");
+    expect(manifest.skipped).toEqual(["123"]);
+    expect(manifest.newFiles).toHaveLength(0);
   });
 });

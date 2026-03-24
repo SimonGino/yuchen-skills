@@ -46,10 +46,11 @@ uv run --project skills/yt-monitor python skills/yt-monitor/scripts/yt_subtitle_
 
 X/Twitter 相关能力已合并到 `skills/x-toolkit/`：
 
-- `scripts/common/`：共享模块（`cookies`、`chrome-login`、`http`、`graphql`、`markdown`、`media-localizer`、`tweet-utils` 等）
-- `scripts/bookmarks/`：书签导出独有模块（`bookmarks-api`、`bookmarks-parser`、`state`、`summary`、`tweet-detail`、`debug`）
-- `scripts/export/`：URL 推文导出独有模块（`summarize`、导出入口）
+- `scripts/common/`：共享模块（`cookies`、`chrome-login`、`http`、`graphql`、`markdown`、`media-localizer`、`manifest`、`tweet-utils` 等）
+- `scripts/bookmarks/`：书签导出独有模块（`bookmarks-api`、`bookmarks-parser`、`state`、`tweet-detail`、`debug`）
+- `scripts/export/`：URL 推文导出独有模块（导出入口）
 - `scripts/main.ts`：统一入口；有 `--urls` 时走推文导出，否则走书签/Debug 模式
+- `references/categories.yaml`：推文分类标签体系（富化流程使用）
 
 共享模块只维护一份，修改时直接更新 `scripts/common/`。
 
@@ -69,5 +70,5 @@ X/Twitter 相关能力已合并到 `skills/x-toolkit/`：
 
 - API 密钥放在 `$HOME/.wqq-skills/.env`。
 - 不要提交密钥；`.wqq-skills/` 已被 gitignore。
-- 仅从文件读取的密钥：`OPENAI_API_KEY`、`OPENAI_BASE_URL`。
+- 仅从文件读取的密钥：`OPENAI_API_KEY`、`OPENAI_BASE_URL`（wqq-wechat-article 使用；x-toolkit 已不再需要）。
 - X 认证：`X_AUTH_TOKEN`、`X_CT0`（或通过 `python3` + `browser_cookie3` 自动从 Chrome 读取 cookies）。

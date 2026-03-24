@@ -7,18 +7,12 @@ describe("parseExportArgs", () => {
     expect(args.limit).toBe(50);
     expect(args.all).toBe(false);
     expect(args.downloadMedia).toBe(true);
-    expect(args.withSummary).toBe(false);
   });
 
   test("parses limit and no-download-media", () => {
     const args = parseExportArgs(["--limit", "10", "--no-download-media"]);
     expect(args.limit).toBe(10);
     expect(args.downloadMedia).toBe(false);
-  });
-
-  test("parses with-summary", () => {
-    const args = parseExportArgs(["--with-summary"]);
-    expect(args.withSummary).toBe(true);
   });
 
   test("parses --all flag", () => {
@@ -31,5 +25,15 @@ describe("parseExportArgs", () => {
     const args = parseExportArgs(["--limit", "10", "--all"]);
     expect(args.all).toBe(true);
     expect(args.limit).toBe(Infinity);
+  });
+
+  test("parses --since flag", () => {
+    const args = parseExportArgs(["--since", "2026-02-01"]);
+    expect(args.since).toBe("2026-02-01");
+  });
+
+  test("rejects invalid --since format", () => {
+    expect(() => parseExportArgs(["--since", "yesterday"])).toThrow("--since must be YYYY-MM-DD format");
+    expect(() => parseExportArgs(["--since", "2026/02/01"])).toThrow("--since must be YYYY-MM-DD format");
   });
 });
