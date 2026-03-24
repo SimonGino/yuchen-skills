@@ -8,4 +8,5 @@ dist/
 bun.lockb
 .venv/
 uv.lock
+__pycache__/
 wqq-x-bookmarks-output/
