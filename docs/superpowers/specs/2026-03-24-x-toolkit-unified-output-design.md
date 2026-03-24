@@ -42,6 +42,14 @@ $X_OUTPUT_DIR/x-toolkit-output/
 
 ## 数据格式
 
+### source 字段
+
+`source` 标识推文的导出来源，合法值为：
+- `"bookmarks"` — 通过书签导出
+- `"urls"` — 通过指定 URL 导出
+
+该字段出现在 manifest.json、frontmatter 和 index.json 中，保持一致。
+
 ### manifest.json
 
 脚本导出完毕后输出，告知模型本次新增了哪些文件：
@@ -152,7 +160,9 @@ categories:
 | `--no-download-media` | 跳过媒体下载 | 不变 |
 | `--with-summary` | 生成 SUMMARY.md | **删除**（被富化流程替代） |
 
-`--since` 与 `--limit` 同时使用时取交集：先按时间过滤，再限制数量。
+`--since` 是分页停止条件（遇到早于该日期的推文则停止翻页），`--limit` 是数量上限。两者同时使用时，实际返回数量为 `min(limit, 时间范围内的推文数)`。
+
+`--since` 的日期判断基于 tweet ID 的 snowflake 时间戳提取（`output.ts` 中已有 `buildTimestampPrefixFromTweetId` 逻辑），不依赖 GraphQL 响应中的 `created_at` 字段。
 
 ### 工作流 2：富化
 
@@ -181,7 +191,9 @@ categories:
 
 - **index.json 不存在或损坏**：模型扫描输出目录里所有 markdown 的 frontmatter 重建
 - **未富化的文件**（frontmatter 无 summary）：查询时仍可通过 grep 正文匹配，列表中摘要显示为空
-- **分类体系变更**：新增分类后旧推文不自动重新打标签，除非用户主动要求"重新分类"
+- **分类体系变更**：新增分类后旧推文不自动重新打标签，除非用户主动要求"重新分类"。`categories.yaml` 在 `references/` 下版本控制，新增分类需提交到 git
+- **旧数据不迁移**：`wqq-x-bookmarks-output` 和 `wqq-x-to-md-output` 中的旧数据不自动迁移，新导出全部进入 `x-toolkit-output`
+- **tweetDate 来源**：index.json 中的 `tweetDate` 统一从 tweet ID 的 snowflake 时间戳提取，bookmarks 和 URL 模式一致
 
 ## 限流与风控
 
@@ -215,13 +227,17 @@ categories:
 |------|------|
 | `scripts/export/summarize.ts` | 移除 OpenAI 摘要，改为模型直接生成 |
 | `scripts/export/summarize.test.ts` | 对应测试 |
+| `scripts/bookmarks/summary.ts` | 移除 OpenAI 书签摘要 + SUMMARY.md 生成（被富化流程替代） |
+| `scripts/bookmarks/summary.test.ts` | 对应测试 |
+| `scripts/common/openai-format.ts` | 删除上述模块后无消费者，变为死代码 |
+| `scripts/common/openai-format.test.ts` | 对应测试 |
 
 ### 修改
 
 | 文件 | 变更 |
 |------|------|
 | `scripts/common/output.ts` | 输出子目录名改为 `x-toolkit-output` |
-| `scripts/bookmarks/main.ts` | 新增 `--since` 参数解析 + 按日期截止分页 + 限流中断保存进度 + 输出 manifest.json |
+| `scripts/bookmarks/main.ts` | 新增 `--since` 参数解析 + 按日期截止分页（基于 snowflake 时间戳） + 限流中断保存进度 + 输出 manifest.json + 移除 `withSummary`/`writeBookmarkSummary` 相关逻辑 |
 | `scripts/export/main.ts` | 移除 summarize 调用 + 输出 manifest.json |
 | `scripts/main.ts` | 删除 `--with-summary` 相关逻辑 |
 | `scripts/types.ts` | 新增 ManifestFile、IndexEntry 等类型；删除摘要相关类型 |
